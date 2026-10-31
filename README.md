@@ -4,6 +4,8 @@
 
 # Swag Scan
 
+[![Tests](https://github.com/jswagger/swag-scan/actions/workflows/test.yml/badge.svg)](https://github.com/jswagger/swag-scan/actions/workflows/test.yml)
+
 Pre-PR review skills for coding agents. Three focused reviewers that check only your change, never the whole repo.
 
 | Skill | Question it answers | Report |
@@ -109,9 +111,11 @@ Bug Hunter and Security Auditor run two passes. `models.<agent>.basic` and `.adv
 | `claude` | `haiku` | `sonnet` |
 | `copilot` | `null` | `null` |
 
+**Migrating:** earlier versions used a flat `models.basic` / `models.advanced`. That shape is no longer read. Move the values under your agent, for example `models.claude.basic`.
+
 ## Tests
 
-Requires Node 22+. No third-party dependencies.
+Requires Node 22 or 24 (both run in CI). No third-party dependencies.
 
 ```bash
 node --test \
