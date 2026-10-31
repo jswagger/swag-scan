@@ -17,6 +17,7 @@
   - [Installation and onboarding](#installation-and-onboarding-placeholder) (setup wizard, setup scan)
   - [The default run: the golden path](#the-default-run-the-golden-path-placeholder)
   - [Future possibilities](#future-possibilities-ideas-only-not-committed-to)
+- [Marketing and showcase](#marketing-and-showcase-placeholder)
 - [Decisions already made](#decisions-already-made-dont-relitigate)
 - [Useful commands](#useful-commands) · [Gotchas](#gotchas) · [Session log](#session-log)
 
@@ -504,6 +505,38 @@ Not planned yet. These are the ideas that came out of discussing where Swag Scan
 - Safe automated fixes suit docs and changelog work. Security, migration, and breaking-change findings should report only.
 - Give new tools names in the same spirit as Test Tailor and Debt Collector.
 
+## Marketing and showcase (placeholder)
+
+**Asset on hand:** `assets/banner/swag-scan-banner.png` (1600×1530) and its source `assets/banner/swag-scan-banner.html`.
+It shows the three planned agents, their tool belts, the "scripts first, models only where they matter" flow, and the planned run
+levels. It also has a hosted draft on claude.ai (private until shared). Built tools are solid and planned ones are dashed
+and marked "coming soon", with a footer saying the rest is on the roadmap.
+
+**Where to use it, best first:**
+- [ ] **GitHub README:** add a "How it works" section below the install lines with the banner image, keeping the logo and tagline on top.
+      Needs the committed PNG (a README can't embed a private page). Mind the file size and consider a dark-mode variant via `<picture>`.
+- [ ] **GitHub social preview image** (repo settings; the card shown when the link is shared). GitHub recommends about 2:1
+      (1280×640), so make a wide variant: logo, headline, and a simplified diagram.
+- [ ] **Launch posts** (blog, LinkedIn, X) for v0.1.0, plus talk slides and a future docs page.
+- [ ] **Marketplace:** as far as known, a plugin marketplace is a catalog (`marketplace.json`) with no banner field; the plugin icon is the
+      only visual element found in the docs. A plugin directory listing might support more. Unverified; check before submitting.
+
+**Keeping it honest:** the banner shows unbuilt things as "coming soon". Update it as tools and agents ship, and re-check the
+labels before using it anywhere public.
+
+**Regenerating the PNG (headless Chrome, no installs):**
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
+  --window-size=1600,1530 --virtual-time-budget=8000 --force-device-scale-factor=1 \
+  --screenshot="$PWD/assets/banner/swag-scan-banner.png" "file://$PWD/assets/banner/swag-scan-banner.html"
+```
+
+The HTML loads Google Fonts (Inter and Montserrat) over the network, so render with a connection.
+
+- [ ] Designer feedback may change the look; regenerate the PNG and the social preview from the updated source.
+- [ ] Before merging to `main`, decide what stays in `assets/` (PNG only, or the source HTML too).
+
 ## Decisions already made (don't relitigate)
 - Renamed the existing repo to `swag-scan` (no new repo). One source of truth in `skills/`, with thin per-platform wrappers.
 - Targets Claude Code and GitHub Copilot (VS Code) for v0.1.0.
@@ -533,3 +566,4 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
 
 ## Session log
 - 2026-10-31: restructure tasks 0 to 7, pre-PR verification (CLI validation, CI, Code Sweeper test, migration note), plugin icon.
+- 2026-10-31 (later): captured the vision in the roadmap sections (agents, orchestration, onboarding, golden path), added a contents table, built the banner and saved it to `assets/banner/`.
