@@ -1,35 +1,37 @@
-# AI-Skills
+<p align="center">
+  <img src="assets/swagScanLogo.jpg" alt="Swag Scan logo" width="240">
+</p>
 
-Generic skills for AI agents in everyday development workflows.
+# Swag Scan
 
-## Review Tools
+Pre-PR review skills for coding agents. Three focused reviewers that check only your change, never the whole repo.
 
-| Skill | Question it answers | Report sections |
+| Skill | Question it answers | Report |
 | --- | --- | --- |
-| [Bug Hunter](Review%20Tools/bug-hunter/SKILL.md) | What did this change break, and what new bugs did it add? | 🔴 Probable Bugs · 🟡 Suspicious · 🟢 Clean |
-| [Code Sweeper](Review%20Tools/code-sweeper/SKILL.md) | Is this change clean, simple, and well tested? | 🔴 Unclean · 🟡 Dusty · 🟢 Clean |
-| [Security Auditor](Review%20Tools/security-auditor/SKILL.md) | Does this change introduce vulnerabilities? | High Risk · Suspicious · Clean |
+| [Bug Hunter](#bug-hunter) | What did this change break, and what new bugs did it add? | 🔴 Probable Bugs · 🟡 Suspicious · 🟢 Clean |
+| [Code Sweeper](#code-sweeper) | Is this change clean, simple, and well tested? | 🔴 Unclean · 🟡 Dusty · 🟢 Clean |
+| [Security Auditor](#security-auditor) | Does this change introduce vulnerabilities? | High Risk · Suspicious · Clean |
 
-Each skill reviews only your change, not the whole repo, and they don't overlap: Bug Hunter skips style and vulnerabilities, Code Sweeper skips bugs and security, and so on.
-
-All three work the same way:
-
-1. **Collect** the diff against a base branch (`review-tools-common`).
-2. **Scan** it with fast pattern heuristics that flag *candidates*.
-3. **Review** each candidate in context. Matches are leads, not verdicts.
+The skills don't overlap: Bug Hunter skips style and vulnerabilities, Code Sweeper skips bugs and security, and so on. Each one **collects** the diff, **scans** it with fast heuristics that flag *candidates*, then **reviews** each candidate in context. Matches are leads, not verdicts.
 
 ## Install
 
-Copy these folders into your project's `.github/skills/` (or `.agents/skills/`):
+**Claude Code**
 
-- `review-tools-common` (required by all three skills)
-- `bug-hunter`, `code-sweeper`, and/or `security-auditor`
+```
+/plugin marketplace add jswagger/swag-scan
+/plugin install swag-scan@swag-scan
+```
 
-Keep each skill's `SKILL.md`, `config.json`, and `scripts/` together. Bug Hunter also needs its `references/` folder.
+**GitHub Copilot (VS Code)**
+
+```bash
+git clone --depth 1 https://github.com/jswagger/swag-scan.git && node swag-scan/scripts/install-copilot.mjs
+```
+
+Run it from your project root. Skills land in `.github/skills/`. Use `--target .agents/skills` for that folder instead, `--project DIR` to install elsewhere, and `--force` to overwrite an existing install.
 
 ## Use
-
-In VS Code Chat:
 
 ```
 /bug-hunter origin/main --ticket PROJ-123
@@ -38,48 +40,32 @@ In VS Code Chat:
 /security-auditor origin/main
 ```
 
-Leave off the base ref to use the configured default branch.
+In Claude Code, skills are namespaced: `/swag-scan:bug-hunter`. Leave off the base ref to use the configured default branch.
 
-Or run the scripts directly from your repo root:
+The scripts also run on their own. Scanners print candidates as JSON and never apply fixes:
 
 ```bash
-node ".github/skills/review-tools-common/collect-diff.mjs" \
-  --config ".github/skills/code-sweeper/config.json" origin/main \
-  | node ".github/skills/code-sweeper/scripts/scan-patterns.mjs"
+node skills/review-tools-common/collect-diff.mjs \
+  --config skills/code-sweeper/config.json origin/main \
+  | node skills/code-sweeper/scripts/scan-patterns.mjs
 ```
 
-Scanners print candidates as JSON. They never apply fixes or judge intent on their own. Bug Hunter runs a longer script pipeline; see its [SKILL.md](Review%20Tools/bug-hunter/SKILL.md).
+Which diff is reviewed:
 
-## How the diff is chosen
-
-- With no argument, the base is `origin/HEAD` (your default branch).
+- No argument: the base is `origin/HEAD` (your default branch).
 - A ref such as `origin/main` is compared from `git merge-base <ref> HEAD`, so target-only commits are excluded.
-- Passing `HEAD` compares only the working tree, which is often empty on a clean feature branch.
+- `HEAD` compares only the working tree, which is often empty on a clean feature branch.
 - Untracked, non-ignored text files are included. Binary and oversized files are skipped.
 
 ## Bug Hunter
 
 A regression safety net. It looks for removed guards, dropped awaits, changed contracts, and broken callers, then checks the change against your ticket's acceptance criteria.
 
-| Rule | Flags |
-| --- | --- |
-| `REMOVED_GUARD` | A null/validity check was removed |
-| `REMOVED_AWAIT` | An `await` was dropped |
-| `REMOVED_ERROR_HANDLING` | Error handling was removed |
-| `REMOVED_CLEANUP` | Cleanup or disposal was removed |
-| `MISSING_RELEASE` | A JS/TS loading state may never complete |
-| `REMOVED_EARLY_EXIT` | An early return was removed (hint) |
-| `BEHAVIOR_CHANGE_PAIR` | A `-`/`+` pair changes behavior |
-| `SIGNATURE_CHANGED` | A function contract changed (hint; triggers a caller search) |
-| `REMOVED_TEST_ASSERTION` | A test assertion was removed |
-| `TEST_DISABLED` | A test was disabled |
-
-How it works:
-
-- **Packets:** scripts rank findings by risk and bundle them with surrounding code and callers, so the agent reads only compact packets. Large diffs hit a size gate and ask whether to review everything or only the riskiest changes.
-- **Two passes:** a basic model triages script findings, then an advanced model reviews what's left. Without model-selectable subagents, the agent does both passes itself.
-- **Language notes:** JavaScript/TypeScript, C#, and Python.
-- **Reports:** saved to `.bug-hunter/reports` (add `.bug-hunter/` to `.gitignore`).
+- **Rules:** `REMOVED_GUARD`, `REMOVED_AWAIT`, `REMOVED_ERROR_HANDLING`, `REMOVED_CLEANUP`, `MISSING_RELEASE`, `REMOVED_EARLY_EXIT`, `BEHAVIOR_CHANGE_PAIR`, `SIGNATURE_CHANGED`, `REMOVED_TEST_ASSERTION`, `TEST_DISABLED`.
+- **Packets:** scripts rank findings by risk and bundle them with surrounding code and callers. Large diffs hit a size gate and ask whether to review everything or only the riskiest changes.
+- **Languages:** JavaScript/TypeScript, C#, Python.
+- **Reports:** saved to `.bug-hunter/reports`. Add `.bug-hunter/` to `.gitignore`.
+- **Silence a finding:** `bug-hunter-ignore` or `bug-hunter-ignore: RULE_NAME` inline.
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
@@ -88,54 +74,50 @@ How it works:
 | `ticketContext` | Ticket file used as acceptance criteria (`--ticket <name>` overrides) | `null` |
 | `repositoryContext` | Nearby docs for local patterns and invariants | `null` |
 | `rules.disabled` / `rules.severityOverrides` | Tune noisy rules | none |
-| `models.<agent>.basic` / `.advanced` | Per-agent model selectors for each pass; `null` uses the agent's default | `claude`: `haiku` / `sonnet`; `copilot`: `null` |
+| `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
 | `report.outputDir` | Where reports are written | `.bug-hunter/reports` |
-
-Silence a single finding inline with `bug-hunter-ignore` or `bug-hunter-ignore: RULE_NAME`.
 
 ## Code Sweeper
 
-Checks changed code for long lines, nested conditionals, heavy boolean logic, long comments, duplication, loose types, oversized files, and weak tests.
+Checks changed code for long lines and functions, nested conditionals, heavy boolean logic, long comments, duplication, loose types, oversized files, and weak tests (`SWEEP-101` to `SWEEP-112`).
 
-| Rule | Flags |
-| --- | --- |
-| `SWEEP-101` | Long added line |
-| `SWEEP-102` | Nested conditional expression |
-| `SWEEP-103` | Many boolean operators on one line |
-| `SWEEP-104` | Long comment |
-| `SWEEP-105` | Repeated statement or block |
-| `SWEEP-106` | Long Python function |
-| `SWEEP-107` | `any` and type assertions (JS/TS) |
-| `SWEEP-108` | Test with only trivial assertions |
-| `SWEEP-109` | Duplicated `as any` test fixtures |
-| `SWEEP-110` | Near-identical sibling tests |
-| `SWEEP-111` | Large source file that grew |
-| `SWEEP-112` | Long JavaScript/TypeScript function |
-
-Auto-fix is on by default for clear, low-risk findings. Dusty findings are never auto-fixed, and test removal is off until you enable `tests.removeLowValue` in `config.json`.
-
-## Security Auditor
-
-Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Coverage is heuristic, not exhaustive.
-
-Set these in `config.json`:
+Auto-fix is on by default for clear, low-risk findings. Dusty findings are never auto-fixed, and test removal stays off until you set `tests.removeLowValue` in `config.json`.
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
-| `models.<agent>.basic` / `.advanced` | Per-agent model selectors for pattern review and architectural review; `null` uses the agent's default | `claude`: `haiku` / `sonnet`; `copilot`: `null` |
+| `autoFix.enabled` | Fix clear, low-risk 🔴 findings (`--no-fix` overrides per run) | `true` |
+| `tests.removeLowValue` | Allow removing low-value tests | `false` |
+| `scan.exclude` / `scan.testFiles.patterns` | Files skipped, and paths treated as tests | see config |
+| `scan.thresholds` | Review heuristics, not hard style rules | see config |
+
+## Security Auditor
+
+Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Coverage is heuristic, not exhaustive. A basic pass reviews common implementation risks (`CRIT-1xx`, `CRIT-2xx`), then an advanced pass looks at attack paths and architecture.
+
+| Setting | Purpose | Default |
+| --- | --- | --- |
+| `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
 | `scan.projectStack` | `backend`, `frontend`, `full-stack`, or `unknown` | `backend` |
 | `scope.maxRelatedFiles` / `maxRelationshipHops` | How far review follows related code | `5` / `1` |
 
+## Model roles
+
+Bug Hunter and Security Auditor run two passes. `models.<agent>.basic` and `.advanced` pick a model for each pass on the agent you're using (`claude` or `copilot`). `null` or a missing entry uses the agent's default model, and without model-selectable subagents the agent does both passes itself.
+
+| Agent | `basic` | `advanced` |
+| --- | --- | --- |
+| `claude` | `haiku` | `sonnet` |
+| `copilot` | `null` | `null` |
+
 ## Tests
 
-Requires Node 22. No third-party dependencies.
+Requires Node 22+. No third-party dependencies.
 
 ```bash
 node --test \
   "skills/bug-hunter/test/*.test.mjs" \
-  "skills/code-sweeper/test/scan-patterns.test.mjs" \
-  "skills/code-sweeper/test/function-length.test.mjs" \
-  "skills/security-auditor/test/scan-patterns.test.mjs" \
+  "skills/code-sweeper/test/*.test.mjs" \
+  "skills/security-auditor/test/*.test.mjs" \
   "skills/review-tools-common/test/*.test.mjs"
 ```
 
