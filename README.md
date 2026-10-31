@@ -132,11 +132,11 @@ Requires Node 22. No third-party dependencies.
 
 ```bash
 node --test \
-  "Review Tools/bug-hunter/test/*.test.mjs" \
-  "Review Tools/code-sweeper/test/scan-patterns.test.mjs" \
-  "Review Tools/code-sweeper/test/function-length.test.mjs" \
-  "Review Tools/security-auditor/test/scan-patterns.test.mjs" \
-  "Review Tools/review-tools-common/test/*.test.mjs"
+  "skills/bug-hunter/test/*.test.mjs" \
+  "skills/code-sweeper/test/scan-patterns.test.mjs" \
+  "skills/code-sweeper/test/function-length.test.mjs" \
+  "skills/security-auditor/test/scan-patterns.test.mjs" \
+  "skills/review-tools-common/test/*.test.mjs"
 ```
 
 ## License

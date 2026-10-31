@@ -31,7 +31,7 @@ Read [config.json](./config.json) first. Key settings:
 Run commands from the repository root. Keep intermediate JSON in `.bug-hunter/run/` and let every later step reuse it; never recollect the diff.
 
 ```sh
-TOOLS="Review Tools"  # where the skills live; for example .github/skills once installed
+TOOLS="skills"  # where the skills live; for example .github/skills once installed
 CFG="$TOOLS/bug-hunter/config.json"; S="$TOOLS/bug-hunter/scripts"; RUN=.bug-hunter/run
 mkdir -p "$RUN"
 node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$CFG" [base-ref] > "$RUN/diff.json"

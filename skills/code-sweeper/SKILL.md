@@ -29,7 +29,7 @@ Read [config.json](./config.json) first.
 Run commands from the repository root.
 
 ```sh
-TOOLS="Review Tools"  # where the skills live; for example .github/skills once installed
+TOOLS="skills"  # where the skills live; for example .github/skills once installed
 CFG="$TOOLS/code-sweeper/config.json"
 node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$CFG" [base-ref] \
   | node "$TOOLS/code-sweeper/scripts/scan-patterns.mjs" [--no-fix]
