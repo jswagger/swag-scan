@@ -1,7 +1,7 @@
 {
   "models": {
-    "basic": "haiku",
-    "advanced": "sonnet"
+    "claude": { "basic": "haiku", "advanced": "sonnet" },
+    "copilot": { "basic": null, "advanced": null }
   },
   "diff": {
     "baseRef": "origin/HEAD",

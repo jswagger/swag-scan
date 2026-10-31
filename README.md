@@ -88,7 +88,7 @@ How it works:
 | `ticketContext` | Ticket file used as acceptance criteria (`--ticket <name>` overrides) | `null` |
 | `repositoryContext` | Nearby docs for local patterns and invariants | `null` |
 | `rules.disabled` / `rules.severityOverrides` | Tune noisy rules | none |
-| `models.basic` / `models.advanced` | Model selectors for each pass | `haiku` / `sonnet` |
+| `models.<agent>.basic` / `.advanced` | Per-agent model selectors for each pass; `null` uses the agent's default | `claude`: `haiku` / `sonnet`; `copilot`: `null` |
 | `report.outputDir` | Where reports are written | `.bug-hunter/reports` |
 
 Silence a single finding inline with `bug-hunter-ignore` or `bug-hunter-ignore: RULE_NAME`.
@@ -122,7 +122,7 @@ Set these in `config.json`:
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
-| `models.basic` / `models.advanced` | Model selectors for pattern review and architectural review | `haiku` / `sonnet` |
+| `models.<agent>.basic` / `.advanced` | Per-agent model selectors for pattern review and architectural review; `null` uses the agent's default | `claude`: `haiku` / `sonnet`; `copilot`: `null` |
 | `scan.projectStack` | `backend`, `frontend`, `full-stack`, or `unknown` | `backend` |
 | `scope.maxRelatedFiles` / `maxRelationshipHops` | How far review follows related code | `5` / `1` |
 

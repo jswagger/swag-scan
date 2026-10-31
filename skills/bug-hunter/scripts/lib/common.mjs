@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const DEFAULT_CONFIG = Object.freeze({
-  models: { basic: 'haiku', advanced: 'sonnet' },
+  models: {
+    claude: { basic: 'haiku', advanced: 'sonnet' },
+    copilot: { basic: null, advanced: null },
+  },
   diff: { baseRef: 'HEAD', untrackedMaxBytes: 100000, maxDiffBytes: 102400 },
   scan: { exclude: [], testFiles: { patterns: [] }, contextLines: 15 },
   rules: { disabled: [], severityOverrides: {} },

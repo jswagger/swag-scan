@@ -23,7 +23,7 @@ Read [config.json](./config.json) first. Key settings:
 - `repositoryContext`: `null` skips it. Otherwise `{ fileNames, maxLinesPerFile, maxTotalLines }`; matching files are searched from each changed file's folder up to the repository root, with the five nearest unique files included at most.
 - `ticketContext`: `null` skips it. Otherwise `{ path, ticketName, maxLines }`; the ticket file is `<ticketName>.md` or `.txt`. A `--ticket <name>` argument overrides `ticketName`.
 - `rules.disabled`, `rules.severityOverrides`, and inline `bug-hunter-ignore[: RULE]` comments tune script noise.
-- `models.basic` / `models.advanced`: preferred model selectors. If model-selectable subagents are unavailable, do both passes yourself and do not claim a model switch.
+- `models.<agent>.basic` / `.advanced`: preferred model selectors for your agent (`claude` or `copilot`); `null` or missing means the agent's default model. If model-selectable subagents are unavailable or the entry is unset, do both passes yourself and do not claim a model switch.
 - `report.outputDir` (default `.bug-hunter/reports`): where reports are written. Add `.bug-hunter/` to `.gitignore`.
 
 ## Procedure
