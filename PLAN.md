@@ -3,6 +3,23 @@
 > **Temporary file.** Delete `PLAN.md` before this branch is merged into `main`
 > (`git rm PLAN.md`), and make that its own commit.
 
+## Contents
+
+- [Resume here](#resume-here)
+- [To do](#to-do) (before push, live agent tests, push and PR, after merge, cleanup)
+- [Backlog](#backlog-later-not-blocking-the-pr)
+- [Vision / roadmap](#vision--roadmap-placeholders-nothing-here-is-built-yet) (nothing here is built yet)
+  - [Agents layer](#agents-layer-placeholder)
+    - [Agent 1: Quality Assurance](#agent-1-quality-assurance-qa-agent)
+    - [Agent 2: Tech Lead](#agent-2-tech-lead-name-not-final)
+    - [Agent 3: Security Guard](#agent-3-security-guard)
+  - [User experience and orchestration](#user-experience-and-orchestration-placeholder)
+  - [Installation and onboarding](#installation-and-onboarding-placeholder) (setup wizard, setup scan)
+  - [The default run: the golden path](#the-default-run-the-golden-path-placeholder)
+  - [Future possibilities](#future-possibilities-ideas-only-not-committed-to)
+- [Decisions already made](#decisions-already-made-dont-relitigate)
+- [Useful commands](#useful-commands) · [Gotchas](#gotchas) · [Session log](#session-log)
+
 ## Resume here
 
 Last updated: 2026-10-31
@@ -10,6 +27,8 @@ Last updated: 2026-10-31
 - **Done:** repo flattened to `skills/`, agent-neutral paths, Claude Code plugin and marketplace manifests,
   Copilot installer, per-agent model roles, root README, CI workflow, Code Sweeper end-to-end test,
   placeholder plugin icon. 134 of 134 tests pass on Node 24, and `claude plugin validate . --strict` passes.
+- **Vision captured (placeholders only):** three agents (QA, Tech Lead, Security Guard), new planned skills, orchestration and
+  levels, onboarding wizard and setup scan, and the default-run golden path. See the roadmap sections. Nothing there is built.
 - **Next:** the live agent tests below (nothing has run through a real agent session yet), then push the branch.
 - Update this section at the end of every session, and tick boxes as you go.
 
@@ -55,6 +74,435 @@ Test repo: `/tmp/swag-test` (`main` has a guarded, awaited, parameterized `app.j
       It worked in the headless test. Revisit if another agent has trouble with it.
 - [ ] Optional: a deterministic scanner rule for commented-out code (`SWEEP-113`). The `SKILL.md` line covers it by agent judgment for now.
 - [ ] Out of scope for now: Codex support (v0.2.0) and npm publishing (after v0.1.0).
+
+## Vision / roadmap (placeholders; nothing here is built yet)
+
+**Where this started:** a set of single-purpose review tools run after implementing a feature or ticket and before opening
+a pull request. Each runs automated checks on only the code that was changed or added.
+
+**Already built (not part of this roadmap):** Bug Hunter (regressions), Security Auditor (security),
+Code Sweeper (unclean or verbose code).
+
+**Where it's going:** a bigger collection of pre-PR checks under the Swag Scan name. Planned **new** additions:
+
+| Planned skill | Working name | What it will do | Status |
+| --- | --- | --- | --- |
+| Test quality | **Test Tailor** | Analyzes the unit tests added in a change and judges their value | Placeholder |
+| Technical debt | **Debt Collector** | Uses a scoring system to say whether the change paid down technical debt or added to it | Placeholder |
+| Acceptance criteria | *(name not chosen yet)* | Checks whether the ticket's acceptance criteria are met by the change | Placeholder, needs a name |
+
+Open questions to settle before building each (more detail to come from you):
+- [ ] **Test Tailor:** Code Sweeper already has test-value rules (`SWEEP-108` trivial assertions, `SWEEP-109` repeated `as any`
+      fixtures, `SWEEP-110` near-identical sibling tests) and a `tests.removeLowValue` setting. Decide whether those move to
+      Test Tailor, stay in Code Sweeper, or are shared, so the two don't overlap.
+- [ ] **Debt Collector:** define the scoring system (what counts as debt added or paid, the scale, and how it's reported).
+- [ ] **Acceptance-criteria checker:** Bug Hunter already reads a ticket file (`ticketContext`, `--ticket`) to check edge cases
+      against acceptance criteria. Decide whether the new skill replaces that, builds on it, or stays separate. Also pick a name.
+- [ ] Each new skill follows the existing pattern: platform-neutral `skills/<name>/SKILL.md`, a `config.json`, Node scripts using
+      built-ins only, tests, and a short section in the root README. No per-skill READMEs.
+- [ ] Update the plugin description, keywords and README intro once any of these ship (they currently describe three skills).
+
+### Agents layer (placeholder)
+
+**Idea:** assign the individual skills to specialist agents, each with its own permissions and perspective. Think of an agent as
+a tradesperson (say, an electrician) with a tool belt: a fixed set of tools for the tasks they are always given. The skills are
+the tools, and the agent is who carries them and how they approach the job.
+
+#### Agent 1: Quality Assurance (QA) agent
+
+| Item | Detail |
+| --- | --- |
+| Role | Quality assurance: decides whether a change works and does what the ticket asked |
+| Tool belt | **Bug Hunter** (built), **acceptance-criteria checker** (planned, unnamed), **Test Runner** (new, planned) |
+| Persona | To be designed (draft sketch below) |
+| Permissions | To be decided (see questions) |
+
+New placeholder skill in this belt:
+
+| Planned skill | Working name | What it will do | Status |
+| --- | --- | --- | --- |
+| Run the tests | **Test Runner** ("maybe", name not final) | Runs the project's tests relevant to the change and reports pass, fail and gaps | Placeholder |
+
+**Draft persona sketch (to refine with you):** a careful, evidence-first tester who asks "does this actually work, and did it
+break anything that worked before?" Trusts a failing test over a plausible explanation, never claims a pass without running
+something, reports what was and wasn't verified, and leaves style and security to other agents.
+
+**Focus items (draft):**
+- [ ] Regressions in changed code (Bug Hunter)
+- [ ] Acceptance criteria met by the change (acceptance-criteria checker)
+- [ ] Tests run and results reported honestly, including what couldn't be run (Test Runner)
+
+#### Agent 2: Tech Lead (name not final)
+
+| Item | Detail |
+| --- | --- |
+| Role | Guardian of code quality: keeps the code base clean, tidy, and focused |
+| Tool belt | **Code Sweeper** (built), **Debt Collector** (planned), **Test Tailor** (planned) |
+| Persona | To be designed |
+| Context to add later | SOLID principles and other engineering principles (details to come from you) |
+| Permissions | To be decided |
+
+**Focus items (draft):**
+- [ ] Clean, simple, non-verbose code (Code Sweeper)
+- [ ] Technical debt paid down, not added (Debt Collector)
+- [ ] Unit tests that earn their place (Test Tailor)
+- [ ] Code stays tidy and focused, guided by SOLID and other principles supplied later as agent context
+
+Open questions (Tech Lead):
+- [ ] **Name:** "Tech Lead" is a working name. Pick the final name.
+- [ ] **Principles as context:** where do SOLID and other principles live, so they are loaded for this agent (and maybe shared
+      with Code Sweeper's review)? One platform-neutral file the agent reads, or text inside the agent definition?
+- [ ] **Overlap:** Code Sweeper and Test Tailor both look at test quality today (see the Test Tailor question above). With both on
+      the same belt, decide who owns which rules.
+
+#### Agent 3: Security Guard
+
+| Item | Detail |
+| --- | --- |
+| Role | Keeps security problems out of the change: vulnerable code, risky dependencies, and over-broad permissions |
+| Tool belt | **Security Auditor** (built), **Dependency Checker** (planned), **Permissions Reviewer** (planned) |
+| Persona | To be designed |
+| Permissions | To be decided. Proposal: report-only, because security findings need human judgment before any edit |
+
+New placeholder skills in this belt:
+
+| Planned skill | Working name | What it will do | Status |
+| --- | --- | --- | --- |
+| Dependency review | **Dependency Checker** (name not final) | Looks at added or bumped packages and lockfile changes | Placeholder |
+| Permissions review | **Permissions Reviewer** (name not final) | Looks at changes to who or what is allowed to do what | Placeholder |
+
+**Dependency Checker, ideas to refine:**
+- Packages added or version-bumped in manifests and lockfiles (npm, pip, NuGet and so on).
+- Known-vulnerable versions, unpinned or wildcard versions, and unexpected new transitive dependencies.
+- Packages that are new, unmaintained, or typosquat-like names.
+- Open question: needs a source for vulnerability data. The repo is zero-dependency and works offline, so decide between
+  local-only heuristics, an optional lookup, or asking the agent to use the ecosystem's own audit command.
+
+**Permissions Reviewer, ideas to refine:**
+- Changes to authentication and authorization logic, roles, and access checks.
+- Changes to CORS settings, public endpoints, and cloud or infrastructure permissions.
+- CI and workflow permissions, such as GitHub Actions `permissions:` blocks and secrets exposure.
+- Open question: where it stops and Security Auditor starts (Security Auditor already flags some authorization gaps).
+
+**Focus items (draft):**
+- [ ] Vulnerabilities and risky patterns in changed code (Security Auditor)
+- [ ] New or changed dependencies are safe and justified (Dependency Checker)
+- [ ] Permissions are no broader than the change needs (Permissions Reviewer)
+
+Open questions (Security Guard):
+- [ ] **Overlap:** decide who owns what between Security Auditor and Permissions Reviewer, so findings aren't duplicated.
+- [ ] **Autofix:** confirm report-only for the whole belt, or allow safe fixes such as pinning a version.
+
+#### Open questions (QA agent and shared)
+
+- [ ] **Test Runner:** how does it find the project's test command (config, auto-detect, ask)? Which test frameworks first?
+      Does it run only tests related to the change or the full suite? What timeout and what happens on failure?
+- [ ] **Permissions:** the QA agent has to run commands to run tests. Should it be read-only on source files, with the
+      ability to run tests and write only reports? What can it never do (push, delete, edit source)?
+- [ ] **Overlap:** Bug Hunter reads acceptance criteria from a ticket today. Where does the line fall between Bug Hunter and
+      the acceptance-criteria checker, inside this one agent?
+- [ ] **Per-platform packaging:** verify against current docs how Claude Code plugins define agents (tools, permissions, model)
+      and how Copilot defines custom agents. Keep the persona and focus items in one platform-neutral source, with thin wrappers.
+- [ ] **How agents get invoked:** by name, as a combined "run my QA agent" command, or both? Does the agent run its tools in a
+      fixed order and produce one combined report?
+- [ ] Other agents to come (for example security, code quality, test quality, tech debt). Which skills go on which belt?
+
+### User experience and orchestration (placeholder)
+
+**Goal:** once the skills and agents exist, make Swag Scan as easy and configurable as possible. A developer finishes a ticket
+(maybe built by a software factory), has commits on a branch, or on three branches across three repos, and wants to know the
+code meets their quality bar. They click a button, go get coffee, and come back to either fixes already applied or a short,
+precise report of the hard decisions. All of this without burning a vast amount of tokens.
+
+**Principle: scripts do the work, models do the judging.** The existing tools already work this way, and the budget depends on
+keeping it true as agents are added.
+- Scripts first: collect the diff, scan, rank findings, and run tests with no model involved. Cost appears only when something is flagged.
+- Cheap model for triage, stronger model only for what survives (the existing `models.<agent>.basic` / `advanced` split).
+- Skip unneeded work: no change means no run, and a clean scan means no model call. Consider caching results by commit hash.
+- Hard limits: size gates (Bug Hunter has one) and a per-run budget cap.
+
+**The "click a button" flow (proposal):**
+1. One entry point, a single `swag-scan` command (and a button or script that calls it), runs the agents in order for a branch.
+2. Fixed order, cheapest first: a quick script-only pass (tests, scanners), then the agents that need judgment.
+3. Autonomous fixes with guardrails: safe fixes go in a **separate commit or branch** so they can be reviewed or reverted as one
+   unit. Security, migration, and breaking-change findings stay report-only.
+4. One consolidated, decisions-first report that replaces the per-skill reports:
+   - **Done for you:** what was fixed, with the diff.
+   - **Needs your decision:** a short list of hard calls, each with evidence, options, and a recommendation.
+
+**Several branches across several repos:**
+- A small runner takes a list of `repo + branch` entries and runs the flow in each **in parallel**, each in its own git worktree
+  so the user's checkouts aren't touched.
+- One summary across all of them (for example "repo A: 2 decisions, repo B: clean, repo C: 5 fixes applied, 1 decision"),
+  with detail one click away.
+- Each repo can carry its own config, with shared defaults for the rest.
+
+**Configuration (keep it simple and layered):**
+- Profiles: `quick` (scripts only), `standard`, `thorough`. A profile picks which agents run, which models they use, and the autofix level.
+- Per-repo overrides in the existing `config.json` files, plus a repo-level on/off switch for each agent.
+
+**Design rule: choosing what runs must be a clean user experience, never a buried JSON setting.** Users pick the level and
+the agents at the moment they run it. `config.json` stays for advanced tuning only.
+
+**Choosing a level** (draft meanings, to refine):
+
+| Level | What runs | Model use | Autofix |
+| --- | --- | --- | --- |
+| `quick` | Scripts only: scanners, tests, size checks | None | Off (report only) |
+| `standard` (default) | Scripts, then model review of flagged items | Cheap triage, stronger model on what survives | Safe fixes only |
+| `thorough` | Everything in `standard`, plus deeper review (wider related-file search, all agent checks) | Stronger model more often, larger size gates | Safe fixes only |
+
+**Choosing agents:** one, several, or all. Draft ways to invoke it:
+- `/swag-scan` runs all agents at `standard`. With no arguments in an interactive session it can show a short menu (agent
+  checklist and level) instead of guessing.
+- `/swag-scan qa`, or `/swag-scan qa security-guard`, runs only the named agents.
+- `/swag-scan --level quick` or `--level thorough` sets the level. Flags combine: `/swag-scan tech-lead --level thorough --no-fix`.
+- `--dry-run` shows what would run and what would be fixed, and changes nothing.
+- Direct shortcuts per agent, such as `/swag-scan:qa`, `/swag-scan:tech-lead`, `/swag-scan:security-guard`.
+- The individual skills (for example `/bug-hunter`) keep working on their own.
+- Before starting, print one line saying what will run: for example "Running: QA, Security Guard at standard, auto-fix on".
+
+**Remembering choices:** precedence from strongest to weakest is command flags, then the user's own saved preference
+(local, not committed), then the repo's team default (committed), then built-in defaults. A guided `swag-scan init` could write
+the repo default for the user, so nobody edits JSON by hand.
+
+**Risks and open questions:**
+- [ ] 🟡 **Interactive menus** work in a live session but not in an unattended or headless run. The same choices must be available
+      as flags, and a headless run must never wait on a prompt. Platform support for menus and arguments (Claude Code, Copilot) is unverified.
+- [ ] Finalize what each level runs and costs, and whether `quick` should be allowed to autofix anything.
+- [ ] 🟡 **Headless runs are less proven than they look.** In this project's verification, a broad-Bash nested session was blocked by
+      the permission classifier, and narrow Bash allowlists failed because the agent varied its command form. For unattended runs,
+      scripts must be invoked in a fixed, predictable way, ideally by a **deterministic orchestrator script** and not by the model
+      deciding what to run. This is the main design change to make.
+- [ ] 🟡 **Platforms differ.** An unattended orchestrator is easiest on Claude Code (headless mode and plugin agents). Copilot is more
+      interactive, so "go get coffee" may need a different mechanism. Not verified; check current Copilot docs.
+- [ ] 🟡 **Autonomous edits can hurt.** The separate-commit rule and a clean dry-run mode matter most. Decide the default autofix level per profile.
+- [ ] ✅ **Token cost is unmeasured.** Once a flow exists, record actual usage per agent and per repo, then tune.
+- [ ] Decide the shape of the entry point (CLI script, slash command, VS Code task) and where the consolidated report is written.
+
+**Suggested build order:**
+1. A deterministic orchestrator for one repo and one agent. The QA agent is the best fit, since Test Runner is script-based.
+   This proves the unattended run, the permissions, and the report format.
+2. The consolidated, decisions-first report.
+3. Multi-repo runs with worktrees, then profiles and config.
+
+### Installation and onboarding (placeholder)
+
+**Goal:** a brand-new developer on Claude Code, with several branches across several repos, installs Swag Scan and gets a useful
+first result as painlessly as possible.
+
+**The first five minutes (proposal):**
+1. **Install once** with two commands (`/plugin marketplace add jswagger/swag-scan`, then `/plugin install swag-scan@swag-scan`).
+   Ideally a user-level install covers every repo. How Claude Code scopes plugin installs is unverified; check the docs.
+2. **Zero required setup:** `/swag-scan` works in any repo on built-in defaults. No JSON, no config file.
+3. **First-run setup (`/swag-scan:setup`)** asks a few quick questions (below), checks the basics (Node version, git repo,
+   base branch), and offers a **dry run** on the current branch so the first result changes nothing.
+4. **A short, decisions-first first report** that ends by pointing to the next step, such as "run with `--level thorough` to go deeper".
+
+**The first-run questions.** Rule: the user should answer at most about three, and every one has a pre-selected default.
+
+| # | Question | Answer style | Notes |
+| --- | --- | --- | --- |
+| 1 | Which branch should I compare your changes against? | Multiple choice with the detected default pre-selected (for example `main`), plus "other" | Detect first. Only ask to confirm. |
+| 2 | What should I run? | Multiple choice of presets: everything at `standard`, a single agent, or `quick` checks only (see levels) | Maps to the level and agent choices above |
+| 3 | Should I fix things automatically? | Multiple choice: safe fixes in a separate commit, report only, or ask each time | Security findings stay report-only regardless |
+
+Asked only if needed, never by default:
+- **Test command**, only when it can't be detected. Show what was found and ask yes or no.
+- **Which repos**, only for a multi-repo run. Let the user paste paths or point to a folder to scan.
+
+**Setup wizard (idea):** shape first-run setup like an old-fashioned installation wizard, the starting point when someone first
+installs or downloads Swag Scan. It walks them through every choice they need up front, in a simple, intuitive order.
+
+Draft screens (3 to 5 steps, with a step counter such as "Step 2 of 4"):
+1. **Welcome and checks:** what Swag Scan does in two lines, plus the basics (Node version, git repo, detected language and test command).
+2. **Compare against:** the base branch question, with the detected default pre-selected.
+3. **What to run:** the level and agents question, as presets.
+4. **Auto-fix:** the fix-behavior question.
+5. **Summary and confirm:** a plain list of the choices, then "Save and run a dry run now?" as the final button.
+
+Wizard behaviors: Back and Skip on every step, "Use defaults" to finish immediately, nothing is written until the
+user confirms on the summary screen, and it can be re-run any time (`/swag-scan:setup`) to change choices.
+
+**Design idea: make the wizard's engine a plain zero-dependency Node script, not a model conversation.**
+- It costs no tokens, behaves identically every time, works on any agent or platform, and fits the "agent-neutral, scripts do the
+  work" principle.
+- **Catch:** an agent's Bash tool usually has no interactive terminal, so an interactive prompt script cannot run through the
+  agent. So the script gets two modes: **interactive** (run directly in the user's own terminal) and **answers mode**
+  (`--base main --level standard --fix safe`, no prompts).
+- **In-agent path:** `/swag-scan:setup` has the agent ask the questions (multiple choice, where the platform supports it),
+  then call the script in answers mode to validate and save them.
+- **First-use trigger:** if no saved answers exist, the first `/swag-scan` offers to start the wizard. Whether a plugin can run
+  anything automatically on install is unverified; assume it cannot and rely on first-use detection.
+- **Later:** once an npm package exists (planned after v0.1.0), the terminal wizard could be a one-line command (for example `npx`),
+  which is the closest match to a "download and run the installer" feel.
+**Wizard front ends (one engine, several skins):** the answers-mode script is the engine, and each front end only collects answers
+and hands them to it.
+
+| Front end | How it feels | Notes |
+| --- | --- | --- |
+| In chat | Agent asks multiple-choice questions, then calls the script | Zero extra pieces. Best for a first run inside the agent. Platform support for choice prompts is unverified. |
+| Terminal | Step-by-step prompts with a step counter | Zero dependencies (Node `readline`). Needs the user's own terminal, not the agent's. |
+| Local HTML form | A simple page with buttons, checkboxes, and fill-in blanks | The most visual and lightest to use. Details below. |
+
+**Local HTML form (idea):** a single self-contained HTML file with no external scripts, fonts, or network calls. The user picks
+a level, ticks agents, chooses the base branch, and presses one button. Same questions and same defaults as the other front ends.
+- **Catch:** a web page opened from disk can't write files. Three ways to get the answers back to the script:
+  1. **Show a command to paste.** The page builds a line such as `node scripts/setup.mjs --base main --level standard --fix safe`.
+     Simplest and safest, but the user has to copy and run it.
+  2. **Download a small answers file** that the script reads. One extra step, and still no server.
+  3. **The script serves the page itself** on `127.0.0.1` (Node `http`, zero dependencies), opens the browser, saves the answers
+     the moment the user clicks Save, then shuts down. Best experience, one click and done, but it is a small local server:
+     bind to localhost only, use a random port and a one-time token, serve only this one page, and exit after one save.
+- **Leaning:** option 3 for the polished experience, with option 1 as the fallback, since pasting one command is the simplest thing that
+  can work and costs almost nothing to build first.
+- Keep the page agent-neutral. Don't host it or rely on any vendor's page hosting; it must work offline from the repo or plugin folder.
+- Accessibility basics: labels on every field, keyboard-friendly, readable in light and dark mode.
+- [ ] Decide which front end ships first, and whether the HTML form is a v1 feature or a later polish.
+- [ ] Decide which path is the default for new users: the in-agent setup, the terminal wizard, or the HTML form.
+- [ ] Decide where saved answers live (a user-level file, outside the repo) and their format.
+
+**Setup scan (idea): a discovery step that runs before the wizard.** A zero-token, read-only script inspects the user's
+environment and hands the wizard a report, so every question opens already filled in with a sensible default and the user mostly
+just confirms. This is "detect first" made concrete, and it proactively removes questions.
+
+What it could detect (all local, all best-effort):
+
+| Area | Examples of what it finds | Used to pre-fill |
+| --- | --- | --- |
+| Git | Repo root, current branch, default branch (`origin/HEAD`, else `main` or `master`), remotes, worktrees, uncommitted changes | Base branch question |
+| Branch state | Branches ahead of the base, commit count and diff size on each | Which branches to offer, and a suggested level (`quick` for a huge diff, for example) |
+| Languages | Mix of source files in the repo and in the diff (JS/TS, Python, C#) | Which skills and rules apply |
+| Tests | Test command and framework, found from `package.json` scripts, `pytest` or `tox` config, `*.csproj`, and similar | Test Runner command |
+| CI | Existing workflow files and what they already run | Avoid duplicating checks |
+| Tickets | Ticket ID in the branch name, or ticket files in the repo | Acceptance-criteria checker input |
+| Tooling | Node version, `git` version, whether the `claude` CLI is on `PATH`, whether the VS Code extension bundles one | Setup checks and friendly errors |
+| Existing setup | Any Swag Scan config, `.bug-hunter/`, or installed skills (`.github/skills`, `.agents/skills`) | Detect a re-run or an upgrade |
+| Permissions | Existing agent permission settings, such as Claude Code allow rules in `.claude/settings.json` | Suggest a small allowlist, and warn about rules that would block a run |
+| Many repos | Scan a chosen parent folder for repos with branches ahead of their base | Pre-fill the repo list for a multi-repo run |
+
+**Rules for the scan:**
+- **Read-only, local, no network.** It changes nothing and sends no file contents anywhere.
+- **Never open secrets.** Skip `.env` files, key files, and credential stores. It reads settings and config names, not secret values.
+- **Show what it found.** The wizard displays the findings ("Found: 3 repos, Node 24, tests via `npm test`") so the user can see and correct them.
+- **Every finding is an editable default, never a decision.** Heuristics will sometimes be wrong.
+- **Bounded:** a time limit and file-count limit so a huge repo or folder doesn't hang the first run.
+- **Reusable:** the same report powers a quick "doctor" check later (`/swag-scan:doctor`) to explain why a run failed.
+
+**Shape:** a zero-dependency script such as `scripts/discover.mjs` that prints one JSON report. The wizard (in chat, terminal,
+or HTML) reads that report to pre-fill its answers, and the same script runs in answers mode with no prompts.
+- [ ] Define the JSON report format, and keep it stable so all wizard front ends can share it.
+- [ ] Decide how much of the permissions inspection is safe and useful, given that setting formats differ per platform and are unverified.
+- [ ] Decide the scan's default scope when run from a parent folder with many repos.
+
+**Rules for asking:**
+- **Detect first, ask only what can't be detected,** and show the detected value as the default.
+- Every question can be skipped with "use defaults". Setup must never block the first run.
+- Answers are **saved**, never asked twice, and can be changed later by re-running `/swag-scan:setup`. Preferences are local to the
+  user and not committed. An optional step writes a team default into the repo.
+- A headless or unattended run **never asks**. It uses saved answers or built-in defaults, and fails with a clear message
+  that names the missing answer.
+- Prefer multiple choice over free text. Use fill-in-the-blank only for paths and branch names.
+
+**How to ask (unverified, check per platform):**
+- Claude Code has a structured multiple-choice question tool that a skill can ask the agent to use. Confirm it is available
+  to plugin skills in every context.
+- Copilot: probably numbered options in chat. Not verified.
+
+**Known friction to design around:**
+- [ ] **Base branch:** the configs default to `origin/HEAD`, which fails with no remote or an unset default branch. Detect and fall back.
+- [ ] **Node 22 or 24 required:** setup should give a friendly message, not a stack trace, when it's missing.
+- [ ] **`claude` CLI may not be on PATH** (it wasn't on the author's machine). An unattended runner must find it, and setup should check.
+- [ ] **First-run permission prompts:** setup could suggest a small allowlist, matching the "fixed, predictable command form" rule above.
+- [ ] A team can commit a default so new developers get the plugin enabled and configured automatically. Unverified; check how
+      Claude Code project settings pre-register a marketplace and enable a plugin.
+
+**Suggested build order for onboarding:**
+1. Sensible defaults and base-branch detection, so zero-config works.
+2. `/swag-scan:setup` with the three questions, the checks, and the dry run.
+3. Repo registration for the multi-repo case (`/swag-scan:repos add <path>`, then `--all-repos`).
+4. A short "Getting started" section in the README: the two install commands and one command to try.
+
+### The default run: the "golden path" (placeholder)
+
+**Scenario:** a brand-new developer has finished the wizard, has three branches across three repos, doesn't know the settings, and
+just asks the agent: "can you run Swag Scan for me?" This is the moment that decides whether they stay. It has to run smoothly,
+feel fast, and never ask for anything else.
+
+**Requirements for the default run:**
+- **No questions.** The wizard already collected what's needed. If it was skipped, use built-in defaults and the scan's findings.
+- **One request, whole job.** "Run Swag Scan" maps to the default `/swag-scan` run without the user knowing flags or agent names.
+- **Fast, with visible progress.** Print what is happening right away ("Scanning 3 branches...") and show each branch's result as it
+  finishes, not one wall of output at the end. Branches and repos run in parallel.
+- **Safe on the first try.** The first run **changes no files** (report only, no autofix), which builds trust. Autofix turns on
+  later, at the user's choice.
+- **Never a stack trace.** Every failure becomes one plain sentence with the fix (for example "No commits ahead of `main` on this
+  branch, so there is nothing to review").
+- **A clear next step.** The report ends with one suggestion, such as "Go deeper on the 4 flagged items?", never a list of flags.
+
+**Proposed default strategy: fast first, deeper on demand (progressive).**
+1. **Pass 1: all agents in `quick` mode, on every branch, in parallel.** Scripts only, no model. Target is seconds, not minutes
+   (unmeasured, to be confirmed on real repos). QA: scanners plus affected tests with a time limit. Tech Lead: Code Sweeper's scanner.
+   Security Guard: Security Auditor's scanner.
+2. **Show the results immediately,** decisions-first and short, with the findings labeled honestly as **leads** from scripts, since no
+   model has verified them yet.
+3. **Offer one click or reply to go deeper,** and run the model review **only on the flagged items** (the existing cheap triage, then
+   stronger model on what survives), under a budget cap. This is the `standard` level applied to just the leads.
+
+**Where I'd push back on "just run everything in quick mode":** `quick` has no model judgment, so on its own the first report
+could feel thin or noisy (pattern matches, not verified findings), and a thin first impression is its own way to lose a developer.
+The progressive plan keeps the speed and the zero-token first pass, and still gets to real, verified findings after one more step.
+- [ ] Decide whether the default run stops after pass 1 and offers to go deeper, or continues automatically into pass 2 for the
+      top flagged items under a small budget. Fully automatic risks a surprise bill, and stopping risks a thin first report.
+
+**Smoothness details to design:**
+- **Tests can be slow.** Run them with a time limit, in the background, and report partial results ("tests still running") instead of
+  blocking the whole report.
+- **Many branches:** parallel, each isolated (git worktrees, see above), with one combined summary at the end.
+- **Resolve "run Swag Scan" reliably:** the main skill's description must match plain requests in natural language, and the
+  agent must map them to the default run with no arguments.
+- **Re-run is cheap:** results cached by commit hash, so asking again with no new commits returns instantly.
+- **Show the cost honestly:** one line, such as "Pass 1 used no model tokens", so users learn what the tool spends.
+
+**How we'll know it works (acceptance checks, to turn into tests):**
+- [ ] Golden-path test: from a fresh install in a throwaway repo, one request runs the default flow end to end with zero prompts.
+- [ ] Time to first result stays under a target we set after measuring on real repos.
+- [ ] Zero edits to the user's files on the first run.
+- [ ] Each common failure (no base branch, no commits ahead, Node missing, tests time out) produces a one-sentence fix and no stack trace.
+- [ ] Record tokens and wall-clock time per run so we can tune with data, not guesses.
+
+**Advanced settings come later:** only after a good first result do we point to levels, agent choice, autofix, and `config.json`
+(see "User experience and orchestration").
+
+### Future possibilities (ideas only, not committed to)
+
+Not planned yet. These are the ideas that came out of discussing where Swag Scan could grow. Pick from here later.
+
+**Suggested order if we build more:** Security Guard first (it's in the plan above), then Release Manager, then Docs Steward.
+
+**More tools for the Security Guard**
+- **Secrets Sentry:** hardcoded secrets, committed `.env` files, and keys in test fixtures. Security Auditor covers some of this
+  already (`CRIT-201`), so decide whether it splits out.
+
+**Release Manager** (is this change ready to ship?)
+- **PR Packager:** writes the PR description and a change summary from the diff and ticket, so reviewers understand intent.
+- **Breaking-Change Detector:** changes to public APIs, config shapes, CLI flags, and schemas.
+- **Migration Checker:** database and data migrations. Are they reversible, safe on large tables, and ordered correctly?
+
+**Docs Steward** (does the documentation still tell the truth?)
+- **Docs Drift Checker:** README, comments, and API docs that no longer match the changed code.
+- **Changelog Keeper:** drafts changelog entries for user-visible changes.
+
+**Performance Engineer** (build last; false positives are likely)
+- An efficiency checker for N+1 queries, repeated work in loops, and unbounded growth, plus a lightweight benchmark gate.
+
+**Accessibility or UX Reviewer** (only if frontends are a target)
+- Missing labels, keyboard traps, and similar issues in changed UI code.
+
+**Watch-outs when building any of these**
+- Decide who owns overlapping rules early (as with Test Tailor and Code Sweeper, and Secrets Sentry and Security Auditor).
+- Safe automated fixes suit docs and changelog work. Security, migration, and breaking-change findings should report only.
+- Give new tools names in the same spirit as Test Tailor and Debt Collector.
 
 ## Decisions already made (don't relitigate)
 - Renamed the existing repo to `swag-scan` (no new repo). One source of truth in `skills/`, with thin per-platform wrappers.
