@@ -31,7 +31,7 @@ Read [config.json](./config.json) first. Key settings:
 Run commands from the repository root. Keep intermediate JSON in `.bug-hunter/run/` and let every later step reuse it; never recollect the diff.
 
 ```sh
-TOOLS="skills"  # where the skills live; for example .github/skills once installed
+TOOLS=<parent directory of this skill folder>  # sibling of review-tools-common; location-independent
 CFG="$TOOLS/bug-hunter/config.json"; S="$TOOLS/bug-hunter/scripts"; RUN=.bug-hunter/run
 mkdir -p "$RUN"
 node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$CFG" [base-ref] > "$RUN/diff.json"
@@ -99,4 +99,4 @@ node "$S/build-packets.mjs"    --config "$CFG" --diff "$RUN/diff.json" --scan "$
 
 `scan-patterns` rules are change-based signals, not a lint set: `REMOVED_GUARD`, `REMOVED_AWAIT`, `REMOVED_ERROR_HANDLING`, `REMOVED_CLEANUP`, `MISSING_RELEASE` (JavaScript/TypeScript loading-state completion paths), `REMOVED_EARLY_EXIT` (hint), `BEHAVIOR_CHANGE_PAIR`, `SIGNATURE_CHANGED` (hint; feeds `find-callers`), `REMOVED_TEST_ASSERTION`, `TEST_DISABLED`. Caller matching is by name, so treat `callers` as leads. Hunks that only touch comments, imports, blank lines, or formatting are skipped. All scripts use Node.js built-ins only.
 
-Run the script tests with (set `TOOLS` as in the Procedure first) `node --test "$TOOLS/bug-hunter/test/*.test.mjs"`.
+Run the script tests with `node --test "$TOOLS/bug-hunter/test/*.test.mjs"`.

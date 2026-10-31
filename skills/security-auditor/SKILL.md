@@ -73,7 +73,7 @@ For each finding, include the rule ID when applicable, file and line, concise ev
 Run from the repository root:
 
 ```sh
-TOOLS="skills"  # where the skills live; for example .github/skills once installed
+TOOLS=<parent directory of this skill folder>  # sibling of review-tools-common; location-independent
 node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$TOOLS/security-auditor/config.json" [base-ref] \
   | node "$TOOLS/security-auditor/scripts/scan-patterns.mjs"
 ```
