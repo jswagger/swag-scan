@@ -7,5 +7,6 @@
   "homepage": "https://github.com/jswagger/swag-scan",
   "repository": "https://github.com/jswagger/swag-scan",
   "license": "MIT",
+  "icon": "./.claude-plugin/icon.png",
   "keywords": ["code-review", "security", "bugs", "clean-code", "pull-request"]
 }
