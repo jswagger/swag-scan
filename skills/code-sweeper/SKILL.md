@@ -42,7 +42,7 @@ node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$CFG" [base-ref] \
    - **Function size:** functions that are hard to understand or test as one unit. Use `scan.thresholds.maxFunctionLines` and the `enclosingFunctionChange` hint as prompts to inspect, not automatic failures.
    - **DRY:** repeated logic that can sensibly share a helper. Check directly relevant call sites for reuse; don't abstract one-off code.
    - **Simplicity:** unnecessary branches, indirection, state, nesting, or cleverness.
-   - **Comments:** comments that narrate obvious code or repeat outdated behavior. Keep comments that explain intent, constraints, or non-obvious decisions.
+   - **Comments:** comments that narrate obvious code or repeat outdated behavior. Keep comments that explain intent, constraints, or non-obvious decisions. Report commented-out code and stale `TODO`/`FIXME` notes the diff adds as 🟡 Dusty; never auto-fix them.
    - **Tests:** whether added or changed tests verify meaningful behavior and add distinct coverage. Prefer recommending removal unless `tests.removeLowValue` is enabled and the test is plainly obsolete or redundant.
 4. **Keep related-code inspection narrow.** Start with changed lines and their immediate context. Open another file only for a concrete reuse or behavior question.
 5. **Auto-fix** only when `autoFix.enabled` is `true` and `--no-fix`/`dry-run` was not given. For each 🔴 finding inside a function:
