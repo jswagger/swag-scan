@@ -127,8 +127,8 @@ sheet with all three at several sizes (they stay readable at 20 px). Draft quote
   solid navy for built and dashed for coming soon). Each portrait has a navy ring and a small hexagon "S" badge that echoes the
   logo. Its HTML source is `swag-scan-crew.html` in the same folder (it loads `../swagScanLogo.jpg`). Regenerate the PNG with
   headless Chrome at 1280 x 2000 and a device scale of 2.
-- [ ] **Banner still shows the old names.** `assets/banner/swag-scan-banner.html` and its PNG say "Quality Assurance" and "Tech
-      Lead". Update them to Analyst and Inspector (and maybe add the portraits), then re-export the PNG.
+- [x] **Banner names updated** to Analyst and Inspector (HTML and PNG re-exported). The banner still says "Criteria Checker"; the crew
+      sheet says "Acceptance Checker". Pick one name.
 - [ ] Use the portraits in the README, the plugin listing and the scan report output (a report line per agent, with its face).
 - [x] Names settled: Analyst (was QA), Inspector (was Tech Lead), Security Guard. Update the rest of the docs and skill text to match as they are touched.
 - [ ] If the SVGs change, regenerate the PNGs (`qlmanage -t -s 512 -o <dir> <file>.svg` works on macOS).
@@ -730,3 +730,4 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
 - 2026-10-31 (night, 3): added a Tool belts section with an icon per tool (built and planned) to the crew page.
 - 2026-10-31 (night, 4): restyled the crew sheet under the Swag Scan logo and banner style (agent card plus tool belt per column), and saved it as `assets/agents/swag-scan-crew.png`.
 - 2026-10-31 (night, 5): added "Agent voice in reports" to the agents layer: findings are worded in each agent's persona, with facts unchanged and a `voice` setting.
+- 2026-10-31 (night, 6): renamed the agents in the banner (HTML and PNG) and pushed the branch.
