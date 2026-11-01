@@ -17,6 +17,7 @@
     - [Agent 3: Security Guard](#agent-3-security-guard)
   - [User experience and orchestration](#user-experience-and-orchestration-placeholder)
   - [Review view: findings shown like a code review](#review-view-findings-shown-like-a-code-review-placeholder-build-only-if-it-proves-reliable)
+  - [Live view: feedback while a scan runs](#live-view-feedback-while-a-scan-runs-placeholder-lightweight-or-not-at-all)
   - [Installation and onboarding](#installation-and-onboarding-placeholder) (setup wizard, setup scan)
   - [The default run: the golden path](#the-default-run-the-golden-path-placeholder)
   - [Future possibilities](#future-possibilities-ideas-only-not-committed-to)
@@ -630,6 +631,78 @@ is the last step of a run, alongside the final report.
 - [ ] **Where the folder lives and how it's cleaned up** between runs.
 - [ ] **Auto-open:** leave off by default. Maybe an opt-in flag for interactive runs.
 
+### Live view: feedback while a scan runs (placeholder, lightweight or not at all)
+
+**Idea:** a scan can take many minutes. Instead of silence, the developer sees the crew at work: the Inspector's face with "Checked
+5 of 12 files. Built to spec so far.", then the Security Guard's face with "Possible issue in `config.py`. Pulling the details.",
+then the Analyst with "Tests running, step 3 of 5." The permission prompts stay in the chat window as they do now.
+
+**Hard limits (these come before the feature):**
+- **No model tokens spent on the live view.** Progress comes from the scripts that already run. The voiced lines are fixed
+  templates per agent and event type (for example "Possible issue in {file}. Pulling the details."), not model output. The model's
+  own voice is saved for the findings in the report (see Agent voice in reports).
+- **No extra permission prompts.** The agent never runs a command just to post an update. The scripts that already run write the
+  events themselves.
+- **Optional and never in the way.** If the live view fails, is closed, or is not supported, the scan runs and reports as normal.
+- **Small effort.** One event file, one small page, one small Claude Code add-on at most. If a step turns out bigger than that, drop it. Build
+  it only after the golden path works, because scan quality comes first.
+- **Steps, not percentages.** Show "step 3 of 5" or "5 of 12 files", which are real counts. Do not show a percent for the model
+  review phases, where the time can't be predicted.
+
+**Design: one event file, thin viewers.**
+1. **Event file.** Scripts append one line per event to a file in the run folder (the same gitignored folder as the Review view):
+   time, agent, kind (`started`, `progress`, `finding`, `done`), and small fields such as counts or the file name. No code, no
+   findings text beyond the file name. One shared writer in `review-tools-common`.
+2. **Viewer A, an auto-refreshing HTML page (works for everyone, including Copilot).** A script rewrites a self-contained page
+   from the event file every few seconds, and the page reloads itself. It shows each agent's portrait, their latest line, and the
+   step count. The path is printed once and the page is never opened automatically unless the user passes `--live`.
+   Browsers block a local page from reading other files live, which is why the data is written into the page itself.
+3. **Viewer B, inside Claude Code (Claude Code only).** A small add-on in the plugin reads the same event file and shows it in the
+   chat window. Cheapest first: a status line entry (for example "Inspector: 5 of 12 files") and a short toast when an agent
+   starts or finds something. Later, if the surface supports it, a live pane beside the chat with the portraits.
+4. **Same final report either way.** The live view is only a preview. The report and the Review view stay the source of truth.
+
+**Reference design:** `assets/agents/live-view-mockup.html` is the approved mock-up (a sped-up sample scan: crew cards with live
+speech bubbles, a five-step tracker, running counts, and a newest-first timeline). It is sample data only. Replay, pause and speed
+buttons are mock-up controls and would not ship.
+The mock-up also shows the permission toast: "Analyst is waiting for you. Approve the request in the chat window." It appears,
+then goes away on its own after a few seconds or when dismissed. **The page never tracks whether the user approved.** It only
+nudges, which keeps the dashboard light and avoids any link between the page and the approval itself.
+
+**Permissions and one-screen use (idea).** Some developers have only one screen, so switching between a progress page and the
+window where permission prompts appear gets annoying. Ideas, best first:
+1. **Fewer prompts in the first place (decided: definitely try; works everywhere, no new UI).** Give the scripts one fixed entry point
+   (for example `node .../swag-scan.mjs <command>`) so a single allow rule covers them, instead of many command shapes that
+   defeat allowlists (see Gotchas). Ship a recommended allowlist, and look at a plugin hook that auto-allows only Swag Scan's own
+   read-only scripts and writes to its run folder. Everything else still asks. In onboarding, suggest a permission mode that
+   fits auto-fix (for example accepting edits) so edits don't prompt one by one. This is the biggest win for the least work.
+2. **Put the live view where the prompts already are (decide later).** The Claude Code add-on (status line, toast, maybe a pane) shows progress in
+   the same window, so there is no second screen to watch. This is Viewer B above.
+3. **A "waiting for you" toast or flag (decided: OK to include).** A permission hook writes an event ("Inspector is waiting for your approval"), so the page
+   (and optionally a sound) tells the user when to switch back, as a toast or a flag on the page. It saves staring at the chat, but the user still has to switch.
+4. **Approve from the page: not planned (decided).** A browser page cannot answer Claude Code's prompts, and it should not be able to,
+   since approvals are a security decision made in the host app. The add-on API appears to include permission-check hooks and a
+   way to ask the user a question inside the add-on's own UI, so an in-pane prompt might be possible. Not verified, so do not plan
+   on it.
+5. **Show the page inside the editor (decide later).** For VS Code users, open the live page in an editor tab beside the chat (for example the
+   built-in Simple Browser, which may need a small local server) so everything is on one screen. To be tested.
+
+**Status of these ideas:** (1) is a firm goal, and (3) is in scope as a toast or flag on the page. (2) and (5) wait until the
+add-on and editor-tab checks below are answered. (4) is not planned. The remaining decision points come later.
+
+**What to verify before building:**
+- [ ] Can a Claude Code add-on ship inside the Swag Scan plugin (it is a plugin "mod" with a hooks module), and does it load for
+      users who install from the marketplace? What does the user have to approve?
+- [ ] Permissions: does a plugin hook that auto-allows only Swag Scan's own scripts work for marketplace installs, and what does
+      the user see when it is installed? Does a single fixed entry-point script keep allow rules matching across runs?
+- [ ] Does VS Code's Simple Browser open a local file or only a local server, and is that worth the extra moving part?
+- [ ] Which surfaces can draw a pane (terminal, desktop app, VS Code), and which only show a status line or toast? Design for
+      the status line and toast first, since they are the most likely to work everywhere.
+- [ ] Does Claude Code tell an add-on when a subagent starts and stops? If so, those can be events too, with no script changes.
+- [ ] Event file shape (kinds, fields) and how often to write, so a fast scan doesn't spend its time updating a file.
+- [ ] Cleanup of old run folders, and what the page shows when a run ends or crashes ("Run ended early").
+- [ ] Copilot in VS Code: only the HTML viewer applies. Confirm it's worth shipping there.
+
 ### Future possibilities (ideas only, not committed to)
 
 Not planned yet. These are the ideas that came out of discussing where Swag Scan could grow. Pick from here later.
@@ -699,6 +772,9 @@ The HTML loads Google Fonts (Inter and Montserrat) over the network, so render w
   No backward-compat fallback for the old flat `models.basic` shape (README migration note only).
 - Plugin icon is the symbol only, redrawn bold and simplified. `plugin.json` references it with `"icon"`.
 - Code Sweeper reports commented-out code and stale TODOs as 🟡 Dusty, by agent judgment and not by a scanner rule.
+- Agents are the Analyst (was QA), the Inspector (was Tech Lead) and the Security Guard. Reports and live lines are written in each agent's voice.
+- Auto-fixed items appear only in the final report. The review view comments only on items that need a decision, and it is built last, from the final diff.
+- Live view and review view cost no extra model tokens and never block a scan. Fewer permission prompts is a firm goal. A browser page does not approve permissions, but may show a "waiting for you" toast or flag.
 
 ## Useful commands
 
@@ -731,3 +807,7 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
 - 2026-10-31 (night, 4): restyled the crew sheet under the Swag Scan logo and banner style (agent card plus tool belt per column), and saved it as `assets/agents/swag-scan-crew.png`.
 - 2026-10-31 (night, 5): added "Agent voice in reports" to the agents layer: findings are worded in each agent's persona, with facts unchanged and a `voice` setting.
 - 2026-10-31 (night, 6): renamed the agents in the banner (HTML and PNG) and pushed the branch.
+- 2026-10-31 (night, 7): added "Live view" (progress while a scan runs): one event file written by scripts, canned per-agent lines, an HTML page and an optional Claude Code status line or pane; zero extra tokens.
+- 2026-10-31 (night, 8): saved the live view mock-up to `assets/agents/live-view-mockup.html` and added ideas for permission prompts and one-screen use to the Live view plan.
+- 2026-10-31 (night, 9): recorded decisions: aim for fewer permission prompts, a "waiting for you" toast or flag is OK in the live page, approving from the page is not planned.
+- 2026-10-31 (night, 10): added the "waiting for you" toast to the live view mock-up (no approval tracking, by design).
