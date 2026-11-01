@@ -10,10 +10,13 @@
 - [Backlog](#backlog-later-not-blocking-the-pr)
 - [Vision / roadmap](#vision--roadmap-placeholders-nothing-here-is-built-yet) (nothing here is built yet)
   - [Agents layer](#agents-layer-placeholder)
-    - [Agent 1: Quality Assurance](#agent-1-quality-assurance-qa-agent)
-    - [Agent 2: Tech Lead](#agent-2-tech-lead-name-not-final)
+    - [Agent portraits](#agent-portraits-draft-1-approved)
+    - [Agent voice in reports](#agent-voice-in-reports-idea-to-build-with-the-agents)
+    - [Agent 1: Analyst](#agent-1-analyst-quality-assurance)
+    - [Agent 2: Inspector](#agent-2-inspector-code-quality)
     - [Agent 3: Security Guard](#agent-3-security-guard)
   - [User experience and orchestration](#user-experience-and-orchestration-placeholder)
+  - [Review view: findings shown like a code review](#review-view-findings-shown-like-a-code-review-placeholder-build-only-if-it-proves-reliable)
   - [Installation and onboarding](#installation-and-onboarding-placeholder) (setup wizard, setup scan)
   - [The default run: the golden path](#the-default-run-the-golden-path-placeholder)
   - [Future possibilities](#future-possibilities-ideas-only-not-committed-to)
@@ -28,7 +31,7 @@ Last updated: 2026-10-31
 - **Done:** repo flattened to `skills/`, agent-neutral paths, Claude Code plugin and marketplace manifests,
   Copilot installer, per-agent model roles, root README, CI workflow, Code Sweeper end-to-end test,
   placeholder plugin icon. 134 of 134 tests pass on Node 24, and `claude plugin validate . --strict` passes.
-- **Vision captured (placeholders only):** three agents (QA, Tech Lead, Security Guard), new planned skills, orchestration and
+- **Vision captured (placeholders only):** three agents (Analyst, Inspector, Security Guard), new planned skills, orchestration and
   levels, onboarding wizard and setup scan, and the default-run golden path. See the roadmap sections. Nothing there is built.
 - **Next:** the live agent tests below (nothing has run through a real agent session yet), then push the branch.
 - Update this section at the end of every session, and tick boxes as you go.
@@ -109,14 +112,74 @@ Open questions to settle before building each (more detail to come from you):
 a tradesperson (say, an electrician) with a tool belt: a fixed set of tools for the tasks they are always given. The skills are
 the tools, and the agent is who carries them and how they approach the job.
 
-#### Agent 1: Quality Assurance (QA) agent
+#### Agent portraits (draft 1, approved)
+
+Each agent gets a profile picture: a modern, minimalist cartoon head in flat shapes, using the banner's palette. Files live in
+`assets/agents/`: one SVG and one PNG per agent (`analyst`, `inspector`, `security-guard`) and `swag-scan-crew.html`, the contact
+sheet with all three at several sizes (they stay readable at 20 px). Draft quotes and report lines below are placeholders.
+
+- **Tool icons (draft):** each tool has a physical icon on `swag-scan-crew.html` (Tool belts section), built and planned alike.
+  Analyst: Bug Hunter = magnifying glass, Acceptance Checker = clipboard, Test Runner = test tube.
+  Inspector: Code Sweeper = broom, Debt Collector = stack of coins, Test Tailor = tailor's measuring tape.
+  Security Guard: Security Auditor = padlock, Dependency Checker = package box, Permissions Reviewer = key.
+- **Crew sheet image:** `assets/agents/swag-scan-crew.png` (2560 px wide, light theme) is the finished sheet: the Swag Scan logo
+  on top, then each agent with its tool belt, in the banner's palette and type (Montserrat and Inter, navy, copper, beige belts,
+  solid navy for built and dashed for coming soon). Each portrait has a navy ring and a small hexagon "S" badge that echoes the
+  logo. Its HTML source is `swag-scan-crew.html` in the same folder (it loads `../swagScanLogo.jpg`). Regenerate the PNG with
+  headless Chrome at 1280 x 2000 and a device scale of 2.
+- [ ] **Banner still shows the old names.** `assets/banner/swag-scan-banner.html` and its PNG say "Quality Assurance" and "Tech
+      Lead". Update them to Analyst and Inspector (and maybe add the portraits), then re-export the PNG.
+- [ ] Use the portraits in the README, the plugin listing and the scan report output (a report line per agent, with its face).
+- [x] Names settled: Analyst (was QA), Inspector (was Tech Lead), Security Guard. Update the rest of the docs and skill text to match as they are touched.
+- [ ] If the SVGs change, regenerate the PNGs (`qlmanage -t -s 512 -o <dir> <file>.svg` works on macOS).
+
+#### Agent voice in reports (idea, to build with the agents)
+
+**Idea:** when an agent reports something it found, the message is written in that agent's voice, so the personality comes
+through in the report itself. The crew sheet's quotes and report lines show the feel: a developer should be able to tell who is
+speaking before reading the name.
+
+| Agent | Voice | Draft example |
+| --- | --- | --- |
+| Analyst | Precise, numbers first, a little dry. Says what was and wasn't verified. | "48 tests passed, 2 failed. Coverage on the changed lines is 91%." |
+| Inspector | Warm and patient, thinks like a building inspector (loose ends, cut corners, built to spec). | "Found a loose end: a TODO with no owner, and two helpers that name the same thing differently." |
+| Security Guard | Few words, serious, no filler. Says what to do first. | "1 hardcoded secret in config.py. Rotate it, then rerun." |
+
+**Rules (so the voice never costs accuracy):**
+- **Voice is wording only.** Every finding still carries the same facts: rule ID, file and line, evidence, why it matters, and a
+  concrete recommendation. The voice sits in the sentence that introduces or explains them and never replaces them.
+- **Short and light.** One sentence of voice, not a paragraph. No heavy accents or catchphrases, and no jokes at the developer's
+  expense. If the voice makes a message longer or less clear, drop the voice.
+- **Serious findings stay plain.** Critical security findings and failing tests lead with the fact and the action. The voice
+  can follow but must not soften them.
+- **Machine-readable output has no voice.** The findings JSON (see the Review view), config, and anything a script parses use
+  plain fields. Only the human-facing text is in voice.
+- **The same voice everywhere the agent speaks:** the per-finding text in the report, the comments in the review view, and the
+  one-line summary. The final overall report stays neutral and easy to scan, with the agents' lines inside it.
+- **Costs nothing extra.** It is part of the same model output, guided by a few lines of persona text in each agent's
+  definition. Script-written messages (for example the Test Runner's counts) can use fixed templates per agent.
+- **Configurable.** Proposal: a `voice` setting with `full` (default), `light`, and `off` (plain reports), so teams that want
+  neutral output can have it.
+
+Open questions (voice):
+- [ ] **Where the persona text lives:** one platform-neutral file per agent (voice, example lines, do and don't), loaded by the
+      Claude Code agent definitions and the Copilot custom agents alike. Same question as the Inspector's principles file.
+- [ ] **Checking it:** add a simple test that voiced messages still contain the file, line and recommendation.
+- [ ] **Setting names and defaults:** confirm `voice` values and whether `quick` runs (scripts only) get any voice at all.
+
+#### Agent 1: Analyst (quality assurance)
 
 | Item | Detail |
 | --- | --- |
 | Role | Quality assurance: decides whether a change works and does what the ticket asked |
 | Tool belt | **Bug Hunter** (built), **acceptance-criteria checker** (planned, unnamed), **Test Runner** (new, planned) |
-| Persona | To be designed (draft sketch below) |
+| Persona | The nerd: evidence-first, all about statistics (see Character below, plus the draft sketch) |
+| Portrait | [`assets/agents/analyst.svg`](assets/agents/analyst.svg) (PNG alongside) |
 | Permissions | To be decided (see questions) |
+
+**Character:** the stats person who stepped right out of an office. Thick-rimmed glasses, side-parted brown hair, tie, and a
+pocket protector with pens. Draft one-liner: "Eleven of twelve acceptance criteria are covered. Let's talk about the twelfth."
+Draft report line: "48 tests passed, 2 failed. Coverage on the changed lines is 91%." Portrait background: soft blue-grey.
 
 New placeholder skill in this belt:
 
@@ -133,15 +196,22 @@ something, reports what was and wasn't verified, and leaves style and security t
 - [ ] Acceptance criteria met by the change (acceptance-criteria checker)
 - [ ] Tests run and results reported honestly, including what couldn't be run (Test Runner)
 
-#### Agent 2: Tech Lead (name not final)
+#### Agent 2: Inspector (code quality)
 
 | Item | Detail |
 | --- | --- |
 | Role | Guardian of code quality: keeps the code base clean, tidy, and focused |
 | Tool belt | **Code Sweeper** (built), **Debt Collector** (planned), **Test Tailor** (planned) |
-| Persona | To be designed |
+| Persona | The old, wise building inspector: kind and patient, but nothing leaves the site unchecked (see Character below) |
+| Portrait | [`assets/agents/inspector.svg`](assets/agents/inspector.svg) (PNG alongside) |
 | Context to add later | SOLID principles and other engineering principles (details to come from you) |
 | Permissions | To be decided |
+
+**Character:** a building inspector. Older, kind smiling eyes, grey mustache and bushy brows, wearing a yellow hard hat and an
+orange hi-vis vest, with a pencil behind his ear. He is there to check that everything was built properly: no loose ends, no
+cut corners, no inconsistencies. Explains why before saying what. Draft one-liner: "Everything is built to spec except one
+corner. Someone cut it." Draft report line: "Found a loose end: a TODO with no owner, and two helpers that name the same thing
+differently." Portrait background: warm tan.
 
 **Focus items (draft):**
 - [ ] Clean, simple, non-verbose code (Code Sweeper)
@@ -149,8 +219,8 @@ something, reports what was and wasn't verified, and leaves style and security t
 - [ ] Unit tests that earn their place (Test Tailor)
 - [ ] Code stays tidy and focused, guided by SOLID and other principles supplied later as agent context
 
-Open questions (Tech Lead):
-- [ ] **Name:** "Tech Lead" is a working name. Pick the final name.
+Open questions (Inspector):
+- [x] **Name:** decided, "Inspector" (was "Tech Lead").
 - [ ] **Principles as context:** where do SOLID and other principles live, so they are loaded for this agent (and maybe shared
       with Code Sweeper's review)? One platform-neutral file the agent reads, or text inside the agent definition?
 - [ ] **Overlap:** Code Sweeper and Test Tailor both look at test quality today (see the Test Tailor question above). With both on
@@ -162,8 +232,13 @@ Open questions (Tech Lead):
 | --- | --- |
 | Role | Keeps security problems out of the change: vulnerable code, risky dependencies, and over-broad permissions |
 | Tool belt | **Security Auditor** (built), **Dependency Checker** (planned), **Permissions Reviewer** (planned) |
-| Persona | To be designed |
+| Persona | Serious, few words, suited up (see Character below) |
+| Portrait | [`assets/agents/security-guard.svg`](assets/agents/security-guard.svg) (PNG alongside) |
 | Permissions | To be decided. Proposal: report-only, because security findings need human judgment before any edit |
+
+**Character:** dark suit, slicked-back hair, sunglasses he never takes off, a flat mouth, and a coiled earpiece. Draft
+one-liner: "Found a key in that file. Rotate it before anything else." Draft report line: "1 hardcoded secret in config.py.
+Rotate it, then rerun." Portrait background: dark navy.
 
 New placeholder skills in this belt:
 
@@ -194,17 +269,17 @@ Open questions (Security Guard):
 - [ ] **Overlap:** decide who owns what between Security Auditor and Permissions Reviewer, so findings aren't duplicated.
 - [ ] **Autofix:** confirm report-only for the whole belt, or allow safe fixes such as pinning a version.
 
-#### Open questions (QA agent and shared)
+#### Open questions (Analyst and shared)
 
 - [ ] **Test Runner:** how does it find the project's test command (config, auto-detect, ask)? Which test frameworks first?
       Does it run only tests related to the change or the full suite? What timeout and what happens on failure?
-- [ ] **Permissions:** the QA agent has to run commands to run tests. Should it be read-only on source files, with the
+- [ ] **Permissions:** the Analyst has to run commands to run tests. Should it be read-only on source files, with the
       ability to run tests and write only reports? What can it never do (push, delete, edit source)?
 - [ ] **Overlap:** Bug Hunter reads acceptance criteria from a ticket today. Where does the line fall between Bug Hunter and
       the acceptance-criteria checker, inside this one agent?
 - [ ] **Per-platform packaging:** verify against current docs how Claude Code plugins define agents (tools, permissions, model)
       and how Copilot defines custom agents. Keep the persona and focus items in one platform-neutral source, with thin wrappers.
-- [ ] **How agents get invoked:** by name, as a combined "run my QA agent" command, or both? Does the agent run its tools in a
+- [ ] **How agents get invoked:** by name, as a combined "run my Analyst agent" command, or both? Does the agent run its tools in a
       fixed order and produce one combined report?
 - [ ] Other agents to come (for example security, code quality, test quality, tech debt). Which skills go on which belt?
 
@@ -256,12 +331,12 @@ the agents at the moment they run it. `config.json` stays for advanced tuning on
 **Choosing agents:** one, several, or all. Draft ways to invoke it:
 - `/swag-scan` runs all agents at `standard`. With no arguments in an interactive session it can show a short menu (agent
   checklist and level) instead of guessing.
-- `/swag-scan qa`, or `/swag-scan qa security-guard`, runs only the named agents.
-- `/swag-scan --level quick` or `--level thorough` sets the level. Flags combine: `/swag-scan tech-lead --level thorough --no-fix`.
+- `/swag-scan analyst`, or `/swag-scan analyst security-guard`, runs only the named agents.
+- `/swag-scan --level quick` or `--level thorough` sets the level. Flags combine: `/swag-scan inspector --level thorough --no-fix`.
 - `--dry-run` shows what would run and what would be fixed, and changes nothing.
-- Direct shortcuts per agent, such as `/swag-scan:qa`, `/swag-scan:tech-lead`, `/swag-scan:security-guard`.
+- Direct shortcuts per agent, such as `/swag-scan:analyst`, `/swag-scan:inspector`, `/swag-scan:security-guard`.
 - The individual skills (for example `/bug-hunter`) keep working on their own.
-- Before starting, print one line saying what will run: for example "Running: QA, Security Guard at standard, auto-fix on".
+- Before starting, print one line saying what will run: for example "Running: Analyst, Security Guard at standard, auto-fix on".
 
 **Remembering choices:** precedence from strongest to weakest is command flags, then the user's own saved preference
 (local, not committed), then the repo's team default (committed), then built-in defaults. A guided `swag-scan init` could write
@@ -282,7 +357,7 @@ the repo default for the user, so nobody edits JSON by hand.
 - [ ] Decide the shape of the entry point (CLI script, slash command, VS Code task) and where the consolidated report is written.
 
 **Suggested build order:**
-1. A deterministic orchestrator for one repo and one agent. The QA agent is the best fit, since Test Runner is script-based.
+1. A deterministic orchestrator for one repo and one agent. The Analyst is the best fit, since Test Runner is script-based.
    This proves the unattended run, the permissions, and the report format.
 2. The consolidated, decisions-first report.
 3. Multi-repo runs with worktrees, then profiles and config.
@@ -443,7 +518,7 @@ feel fast, and never ask for anything else.
 
 **Proposed default strategy: fast first, deeper on demand (progressive).**
 1. **Pass 1: all agents in `quick` mode, on every branch, in parallel.** Scripts only, no model. Target is seconds, not minutes
-   (unmeasured, to be confirmed on real repos). QA: scanners plus affected tests with a time limit. Tech Lead: Code Sweeper's scanner.
+   (unmeasured, to be confirmed on real repos). Analyst: scanners plus affected tests with a time limit. Inspector: Code Sweeper's scanner.
    Security Guard: Security Auditor's scanner.
 2. **Show the results immediately,** decisions-first and short, with the findings labeled honestly as **leads** from scripts, since no
    model has verified them yet.
@@ -474,6 +549,86 @@ The progressive plan keeps the speed and the zero-token first pass, and still ge
 
 **Advanced settings come later:** only after a good first result do we point to levels, agent choice, autofix, and `config.json`
 (see "User experience and orchestration").
+
+### Review view: findings shown like a code review (placeholder, build only if it proves reliable)
+
+**Idea:** the agents are characters, so present results the way a developer experiences a human code review (say, a Bitbucket
+pull request): each changed file as a diff, added lines in green, removed lines in red, and each agent's comment attached to the
+line it flagged, with that agent's portrait and name. A developer sees exactly which code an agent is talking about instead of
+matching `file:line` references by hand.
+
+**Rule for this feature:** it ships only if it works nearly every run at close to zero cost. If a prototype fails often, we
+drop it and keep the plain report. A broken or misplaced comment is worse than no comment.
+
+**Chosen route (cheapest, fastest, least likely to fail):**
+1. **A script does all the rendering, never the model.** The agent only supplies its findings as JSON (agent, file, line,
+   severity, message). A new zero-dependency script in `skills/review-tools-common/` reads the diff and that JSON and writes
+   the output. No tokens spent, same result every run, works on any agent or platform, and needs no network.
+2. **Per-finding snippets first.** Each finding in the normal report includes the flagged line plus a few lines of context as a
+   small diff hunk, under that agent's name. This is plain text, so it works in a terminal, chat, or CI log.
+3. **One review file as a later step.** A single self-contained HTML file (inline CSS, no scripts needed to read it, portraits
+   embedded from `assets/agents/`) holding only the files that have findings. The path is printed at the end of the run. It never
+   auto-opens, so headless and CI runs behave the same as interactive ones.
+4. **Skipped for now:** one `.diff` file per commented file (the HTML covers it), live comment bubbles, and anything that needs
+   a server or a library.
+
+**What gets a comment: only findings that need a decision.** The review view is for things the developer must weigh, not
+things already handled.
+- **Auto-fixed items get no comment in the diff view.** Findings that meet the auto-fix criteria are fixed every run unless the
+  user has turned auto-fix off on purpose (for example Code Sweeper's `autoFix.enabled`, or `--no-fix` / dry-run for one run).
+  They appear only in the final report, in an "Auto-fixed" list saying what changed, and the diff view then shows the
+  already-fixed code. (Today Code Sweeper auto-fixes clear, low-risk 🔴 Unclean findings and never auto-fixes 🟡 Dusty ones.)
+- **Commented (needs a decision):** findings that are never auto-fixed (such as 🟡 Dusty), findings downgraded because a safe fix
+  wasn't possible (for example a function with outside references), report-only agents such as the Security Guard, and anything
+  where the fix is a judgment call.
+- **When auto-fix is off:** items that would have been fixed are no longer handled, so they become decisions and do get comments,
+  marked "would have been auto-fixed" so the developer knows they are low-risk.
+- **Each finding carries a `disposition`** in the shared findings JSON: `auto-fixed`, `needs-decision`, or
+  `would-auto-fix` (auto-fix was off). The script comments only on the last two; the summary report lists all three.
+- **Same agent, two places:** the Inspector can have both kinds in one run, so the report might say "4 auto-fixed, 2 need your
+  call" with only the 2 appearing as comments.
+- **Do not touch the criteria here.** What counts as auto-fixable stays defined by each skill and its config. The review view
+  only reads the disposition.
+
+**When it runs: last, after every agent's auto-fixes are done.** The review view is built from the final state of the code, so it
+is the last step of a run, alongside the final report.
+1. All agents run and apply their auto-fixes (one agent's fixes can shift another agent's line numbers, so nothing is built
+   until the last fix is in).
+2. Take the final diff against the base, once.
+3. Re-anchor every `needs-decision` finding to that final diff. Each finding keeps the exact flagged text next to its line
+   number, and the script finds that text near the reported line. If the text is not found, the finding goes to "Unplaced
+   findings" (see the reliability rules).
+4. Build the final report and the review view from that same final diff. They only read the finished state and do not depend on
+   each other, so they can run in parallel. The only link is that the report prints the review file's path (or says it was
+   skipped).
+- The review view never edits code, so running it last cannot change anything the agents already did.
+- If a run stops early or an agent fails, build the view from whatever state exists, mark which agents finished, and never wait
+  on a missing agent.
+
+**Reliability rules (the thing that keeps the failure rate low):**
+- A finding is shown inline only if its line number is verified to exist on the new side of the diff. Otherwise it appears in
+  an "Unplaced findings" list at the bottom, with the `file:line` as today. Nothing is dropped and nothing is misplaced.
+- If rendering fails for any reason, the run still ends with the normal report. The review file is an extra, never a
+  requirement.
+- Output goes to a gitignored folder (or the OS temp directory), so it can't be committed by accident.
+- Large diffs: cap the number of files and lines shown, and say what was left out.
+
+**Open questions / checks before building:**
+- [ ] **Line numbers:** confirm Code Sweeper, Bug Hunter and Security Auditor each report new-side line numbers that match the
+      diff. Code Sweeper's scanner already reports file and line, so check the other two. Add a test that maps every reported
+      line onto the diff.
+- [ ] **Findings JSON shape:** one shared shape for all agents, defined once in `review-tools-common`, including `disposition`.
+- [x] **Line numbers after auto-fix:** decided. The view is built last, from the post-fix diff (see "When it runs"). Still to
+      confirm: the findings JSON carries the flagged text, not only the line number, so re-anchoring works.
+- [ ] **Orchestration hook:** where the last step plugs into the orchestrator (see the User experience section) so it always
+      runs after the final agent, and what happens in a single-agent run (same step, just one agent).
+- [ ] **First-run mode:** the golden path's first run is report-only. Confirm those findings show as `would-auto-fix` and get
+      comments, not a silent list.
+- [ ] **Success bar:** run the prototype on a set of real branches and count placed versus unplaced findings. Proposal: build the
+      HTML file only if at least 95% of findings land on the right line.
+- [ ] **Binary, renamed, and deleted files:** show a one-line note instead of a diff.
+- [ ] **Where the folder lives and how it's cleaned up** between runs.
+- [ ] **Auto-open:** leave off by default. Maybe an opt-in flag for interactive runs.
 
 ### Future possibilities (ideas only, not committed to)
 
@@ -567,3 +722,11 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
 ## Session log
 - 2026-10-31: restructure tasks 0 to 7, pre-PR verification (CLI validation, CI, Code Sweeper test, migration note), plugin icon.
 - 2026-10-31 (later): captured the vision in the roadmap sections (agents, orchestration, onboarding, golden path), added a contents table, built the banner and saved it to `assets/banner/`.
+- 2026-10-31 (evening): designed the three agent portraits (then QA, Tech Lead, Security Guard), saved them to `assets/agents/`, and recorded each agent's character in the agents layer.
+- 2026-10-31 (night): added the "Review view" idea (diffs with agent comments on flagged lines) to the roadmap, scoped to a script-rendered, no-token route with a reliability bar.
+- 2026-10-31 (late): review view only comments on findings that need a decision; auto-fixed items go in the final report only (added `disposition` to the findings idea).
+- 2026-10-31 (late, 2): review view runs as the last step, after all agents' auto-fixes, from the final diff, in parallel with the final report; findings keep flagged text for re-anchoring.
+- 2026-10-31 (night, 2): renamed QA to Analyst and Tech Lead to Inspector (building-inspector look: hard hat, hi-vis vest, pencil behind the ear); portraits are now `analyst`, `inspector`, `security-guard` in `assets/agents/`.
+- 2026-10-31 (night, 3): added a Tool belts section with an icon per tool (built and planned) to the crew page.
+- 2026-10-31 (night, 4): restyled the crew sheet under the Swag Scan logo and banner style (agent card plus tool belt per column), and saved it as `assets/agents/swag-scan-crew.png`.
+- 2026-10-31 (night, 5): added "Agent voice in reports" to the agents layer: findings are worded in each agent's persona, with facts unchanged and a `voice` setting.
