@@ -103,7 +103,9 @@ export function renderMarkdown(report) {
   out.push(`**${summary.probableBugs}** probable · **${summary.suspicious}** suspicious · **${summary.clean}** clean areas`, '');
 
   if (run.mode === 'high-risk-only') {
-    out.push('> ⚠️ **Partial review.** A size budget limited this run to the highest-risk changes. Not reviewed:');
+    out.push(run.unattended
+      ? '> ⚠️ **Partial review.** This unattended run was over the size limit, so it reviewed only the highest-risk changes and did not ask. Not reviewed:'
+      : '> ⚠️ **Partial review.** A size budget limited this run to the highest-risk changes. Not reviewed:');
     for (const omitted of run.omitted) out.push(`> - \`${omitted.file}\` (lines ${omitted.range.start}-${omitted.range.end}, risk ${omitted.riskScore})`);
     out.push('');
   }
@@ -142,6 +144,7 @@ export function buildReportJson(agentReport, { scan, packets, now = new Date() }
       commit: scan?.commit_hash,
       mode: packets?.mode ?? 'full',
       omitted: packets?.omitted ?? [],
+      unattended: Boolean(packets?.budget?.unattended),
       languages: scan?.repository_type ?? [],
       coverage: scan?.coverage,
     },

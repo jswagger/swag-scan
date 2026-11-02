@@ -108,6 +108,17 @@ test('a budgeted run is disclosed as a partial review listing the omitted files'
   assert.match(markdown, /`quiet\.js` \(lines 10-20, risk 1\)/);
 });
 
+test('an unattended partial review says it did not ask', () => {
+  const packets = {
+    mode: 'high-risk-only',
+    budget: { unattended: true },
+    omitted: [{ id: 'P4', file: 'quiet.js', range: { start: 10, end: 20 }, riskScore: 1 }],
+  };
+  const markdown = renderMarkdown(buildReportJson({}, { packets, now: NOW }));
+  assert.match(markdown, /unattended run was over the size limit.*did not ask/);
+  assert.match(markdown, /`quiet\.js`/);
+});
+
 test('scan metadata and the tests-missing signal flow into the report', () => {
   const scan = { comparison_base: 'abc', commit_hash: 'a1b2c3d', repository_type: ['csharp'], signals: { logicChangedWithoutTests: true } };
   const report = buildReportJson({}, { scan, now: NOW });

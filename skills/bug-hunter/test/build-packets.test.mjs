@@ -115,9 +115,47 @@ test('the budget never drops the single highest-risk packet even when it alone e
   assert.equal(result.packets.length, 1);
 });
 
-test('very large additions are truncated and flagged', () => {
-  const lines = Array.from({ length: MAX_HUNK_LINES + 50 }, (_, i) => added(i + 1, `row${i + 1}`));
+test('a very large addition is split into several packets that cover every added line', () => {
+  const total = MAX_HUNK_LINES * 2 + 50;
+  const lines = Array.from({ length: total }, (_, i) => added(i + 1, `row${i + 1}`));
   const result = build([file('new.js', lines, 'untracked')], { sources: { 'new.js': lines.map((line) => line.text) }, contextLines: 0 });
-  assert.equal(result.packets[0].truncated, true);
-  assert.equal(result.packets[0].diff.split('\n').length, MAX_HUNK_LINES);
+
+  assert.equal(result.packets.length, 3);
+  assert.equal(result.packets.some((packet) => packet.truncated), false);
+  const covered = result.packets.flatMap((packet) => packet.diff.split('\n').filter((row) => row.startsWith('+')));
+  assert.equal(covered.length, total);
+  assert.equal(new Set(covered).size, total);
+});
+
+test('findings and removed lines land in the packet that holds their line', () => {
+  const total = MAX_HUNK_LINES + 40;
+  const lines = [removed(1, 'oldFirst'), ...Array.from({ length: total }, (_, i) => added(i + 1, `row${i + 1}`))];
+  const late = MAX_HUNK_LINES + 10;
+  const finding = { rule: 'X', severity: 'HIGH', confidence: 'high', file: 'new.js', line: late, side: 'added', message: 'late problem' };
+  const result = build([file('new.js', lines)], {
+    sources: { 'new.js': Array.from({ length: total }, (_, i) => `row${i + 1}`) },
+    contextLines: 0,
+    findings: [finding],
+  });
+
+  const withFinding = result.packets.filter((packet) => packet.findings.length > 0);
+  assert.equal(withFinding.length, 1);
+  assert(withFinding[0].range.start > 1);
+  const withRemoved = result.packets.filter((packet) => /^-\s*1\s+oldFirst/m.test(packet.diff));
+  assert.equal(withRemoved.length, 1);
+  assert.equal(withRemoved[0].range.start, 1);
+});
+
+test('a split change still respects the byte budget and lists omitted parts', () => {
+  const total = MAX_HUNK_LINES * 2;
+  const lines = Array.from({ length: total }, (_, i) => added(i + 1, `row${i + 1}`));
+  const result = build([file('new.js', lines)], {
+    sources: { 'new.js': lines.map((line) => line.text) },
+    contextLines: 0,
+    budgetBytes: 1,
+  });
+  assert.equal(result.packets.length, 1);
+  assert.equal(result.omitted.length, 1);
+  assert.equal(result.omitted[0].file, 'new.js');
+  assert.deepEqual(result.omitted[0].range, { start: MAX_HUNK_LINES + 1, end: total });
 });

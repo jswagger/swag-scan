@@ -3,12 +3,12 @@
 // changes, each a single line-numbered unified view (context + added + removed) with its findings
 // and caller leads attached. Replaces handing the agent whole files or raw `git diff` output.
 // Usage: build-packets.mjs --diff <collector.json> --scan <scan-report.json> [--callers <callers.json>]
-//        [--config <path>] [--budget-bytes <n>]
+//        [--config <path>] [--budget-bytes <n>] [--non-interactive]
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
-import { isMain, languageForPath, loadConfig, parseArgs, runCli } from './lib/common.mjs';
+import { isMain, isNonInteractive, languageForPath, loadConfig, parseArgs, runCli } from './lib/common.mjs';
 import { groupHunks, isTrivialHunk } from './lib/hunks.mjs';
 import { parseSignature } from './lib/rules-regression.mjs';
 
@@ -41,6 +41,36 @@ function clusterHunks(hunks, contextLines) {
     }
   }
   return clusters;
+}
+
+/**
+ * Splits a cluster longer than MAX_HUNK_LINES into consecutive windows, so a large change becomes several
+ * packets and every changed line is reviewed (or listed as omitted) instead of being cut off silently.
+ * Removed lines stay with the first window of their hunk, where they are placed.
+ */
+function splitCluster(cluster) {
+  if (cluster.end - cluster.start + 1 <= MAX_HUNK_LINES) return [cluster];
+  const parts = [];
+  for (let from = cluster.start; from <= cluster.end; from += MAX_HUNK_LINES) {
+    const to = Math.min(cluster.end, from + MAX_HUNK_LINES - 1);
+    const hunks = [];
+    for (const hunk of cluster.hunks) {
+      const added = hunk.added.filter((line) => line.line >= from && line.line <= to);
+      const ownsRemoved = hunk.added.length > 0 ? hunk.added[0].line >= from && hunk.added[0].line <= to : hunk.start >= from && hunk.start <= to;
+      const removed = ownsRemoved ? hunk.removed : [];
+      if (added.length === 0 && removed.length === 0) continue;
+      hunks.push({
+        ...hunk,
+        added,
+        removed,
+        start: added.length > 0 ? added[0].line : hunk.start,
+        end: added.length > 0 ? added.at(-1).line : hunk.end,
+      });
+    }
+    if (hunks.length === 0) continue;
+    parts.push({ hunks, start: Math.min(...hunks.map((hunk) => hunk.start)), end: Math.max(...hunks.map((hunk) => hunk.end)) });
+  }
+  return parts;
 }
 
 function findEnclosing(sourceLines, startLine, language) {
@@ -122,7 +152,7 @@ function scoreCluster(cluster, findings, callers, isTest) {
   return { score, reasons: [...new Set(reasons)] };
 }
 
-export function buildPackets(collected, scanReport, callersReport, { contextLines, isTestFile, readLines, budgetBytes }) {
+export function buildPackets(collected, scanReport, callersReport, { contextLines, isTestFile, readLines, budgetBytes, unattended = false }) {
   const findingsByFile = new Map();
   for (const finding of scanReport.script_findings ?? []) {
     findingsByFile.set(finding.file, [...(findingsByFile.get(finding.file) ?? []), finding]);
@@ -137,7 +167,7 @@ export function buildPackets(collected, scanReport, callersReport, { contextLine
     const sourceLines = file.status === 'deleted' ? undefined : readLines(file.path);
     const isTest = isTestFile(file.path);
 
-    for (const cluster of clusterHunks(hunks, contextLines)) {
+    for (const cluster of clusterHunks(hunks, contextLines).flatMap(splitCluster)) {
       const findings = (findingsByFile.get(file.path) ?? []).filter((finding) => cluster.hunks.some((hunk) => hunkContainsFinding(hunk, finding)));
       const callers = [...new Set(findings.map((finding) => finding.symbol).filter(Boolean))]
         .map((symbol) => callersBySymbol.get(symbol)).filter(Boolean);
@@ -177,7 +207,7 @@ export function buildPackets(collected, scanReport, callersReport, { contextLine
     schemaVersion: 1,
     comparison_base: collected.comparisonBase,
     mode: omitted.length > 0 ? 'high-risk-only' : 'full',
-    budget: { bytes: budgetBytes ?? null, used, packetsIncluded: included.length, packetsOmitted: omitted.length },
+    budget: { bytes: budgetBytes ?? null, used, packetsIncluded: included.length, packetsOmitted: omitted.length, unattended },
     signals: scanReport.signals,
     packets: included,
     omitted,
@@ -194,7 +224,7 @@ function readWorkingTreeLines(path) {
 
 if (isMain(import.meta.url)) {
   await runCli(async () => {
-    const { flags } = parseArgs(process.argv.slice(2));
+    const { flags } = parseArgs(process.argv.slice(2), ['non-interactive']);
     if (!flags.diff || !flags.scan) throw new Error('Usage: build-packets.mjs --diff <collector.json> --scan <scan-report.json> [--callers <callers.json>]');
     const config = loadConfig(flags.config);
     const { isTestFile } = createFileFilters(config.scan);
@@ -208,6 +238,7 @@ if (isMain(import.meta.url)) {
       isTestFile,
       readLines: readWorkingTreeLines,
       budgetBytes,
+      unattended: isNonInteractive(flags),
     });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   });

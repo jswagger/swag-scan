@@ -819,4 +819,9 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
   suggested ref, and prints a changed/excluded/scanned and bytes-vs-gate summary line; 138 of 138 tests pass.
   Step 2 done: `review-tools-common/coverage.mjs` gives a per-language coverage line; the collector, all three scanners and the Bug
   Hunter report carry it, unsupported files show as ⚪ Unchecked, and each SKILL.md says never to list them as Clean.
+  Step 3 done: `check-diff-size` returns a `decision` (`proceed`, `ask`, `review-riskiest`); unattended mode comes from
+  `--non-interactive`, `SWAG_SCAN_NONINTERACTIVE=1` or `CI`, and the report says the run did not ask. The gate counts changed-line text
+  (about half the collector's JSON). Step 3b: `build-packets` used to cut any contiguous change over 300 lines (`MAX_HUNK_LINES`) and
+  mark the packet `truncated`, never disclosed, so a 500-line new file was partly reviewed in silence. It now splits such changes into
+  several packets, so every changed line is reviewed or listed as omitted. 151 of 151 tests pass.
   Plan: phase 1 tools (collector fixes, language coverage, non-interactive gate, ticket handling), phase 2 agents and orchestrator, phase 3 event log, multi-repo, dashboard.

@@ -86,6 +86,12 @@ export function parseArgs(argv, booleanFlags = []) {
   return { flags, positionals };
 }
 
+/** True for unattended runs: the --non-interactive flag, SWAG_SCAN_NONINTERACTIVE=1, or a CI environment. */
+export function isNonInteractive(flags = {}, env = process.env) {
+  const on = (value) => value === '1' || value === 'true';
+  return Boolean(flags['non-interactive']) || on(env.SWAG_SCAN_NONINTERACTIVE) || on(env.CI);
+}
+
 export function readStdin() {
   return new Promise((resolveInput, reject) => {
     let data = '';

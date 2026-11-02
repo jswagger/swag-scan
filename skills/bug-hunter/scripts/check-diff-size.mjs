@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Gate: measures the collected diff and warns before an expensive review.
-// Usage: collect-diff.mjs ... | check-diff-size.mjs [--config <path>] [--limit <bytes>]
+// Usage: collect-diff.mjs ... | check-diff-size.mjs [--config <path>] [--limit <bytes>] [--non-interactive]
+// `bytes` is the changed-line text only (not the collector's JSON, which is about twice as large).
+// `decision` is "proceed", "ask" (interactive run over the limit) or "review-riskiest" (unattended run over the limit).
 
-import { isMain, loadConfig, parseArgs, readJsonInput, runCli } from './lib/common.mjs';
+import { isMain, isNonInteractive, loadConfig, parseArgs, readJsonInput, runCli } from './lib/common.mjs';
 
 const TOP_FILES = 10;
 
@@ -15,13 +17,19 @@ export function measureDiff(collected) {
   return { bytes: files.reduce((sum, file) => sum + file.bytes, 0), files };
 }
 
-export function checkDiffSize(collected, limit) {
+export function checkDiffSize(collected, limit, { nonInteractive = false } = {}) {
   const { bytes, files } = measureDiff(collected);
   const exceeded = bytes > limit;
+  const decision = !exceeded ? 'proceed' : nonInteractive ? 'review-riskiest' : 'ask';
   return {
     bytes,
     limit,
     exceeded,
+    decision,
+    budgetBytes: decision === 'review-riskiest' ? limit : null,
+    notice: decision === 'review-riskiest'
+      ? `Unattended run: the diff is ${(bytes / 1024).toFixed(1)}KB, over the ${(limit / 1024).toFixed(1)}KB limit, so only the highest-risk changes are reviewed. The report lists what was skipped.`
+      : null,
     fileCount: files.length,
     largestFiles: files.slice(0, TOP_FILES),
     warning: exceeded
@@ -32,11 +40,11 @@ export function checkDiffSize(collected, limit) {
 
 if (isMain(import.meta.url)) {
   await runCli(async () => {
-    const { flags } = parseArgs(process.argv.slice(2));
+    const { flags } = parseArgs(process.argv.slice(2), ['non-interactive']);
     const config = loadConfig(flags.config);
     const limit = flags.limit ? Number(flags.limit) : config.diff.maxDiffBytes;
     if (!Number.isInteger(limit) || limit <= 0) throw new Error('--limit must be a positive integer.');
     const collected = await readJsonInput(flags);
-    process.stdout.write(`${JSON.stringify(checkDiffSize(collected, limit), null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(checkDiffSize(collected, limit, { nonInteractive: isNonInteractive(flags) }), null, 2)}\n`);
   });
 }

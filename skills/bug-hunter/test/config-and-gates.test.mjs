@@ -172,3 +172,27 @@ test('ticket context rejects names that try to escape the ticket folder', (conte
   const result = gatherTicketContext({ path: dir, ticketName: '../secret', maxLines: 500 });
   assert.equal(result.found, false);
 });
+
+test('an over-limit diff asks interactively but picks the riskiest files when unattended', () => {
+  const collected = { files: [{ path: 'big.js', changes: [{ side: 'added', line: 1, text: 'x'.repeat(2000) }] }] };
+
+  const ask = checkDiffSize(collected, 1000);
+  assert.equal(ask.decision, 'ask');
+  assert.equal(ask.budgetBytes, null);
+
+  const unattended = checkDiffSize(collected, 1000, { nonInteractive: true });
+  assert.equal(unattended.decision, 'review-riskiest');
+  assert.equal(unattended.budgetBytes, 1000);
+  assert.match(unattended.notice, /Unattended run.*highest-risk/);
+
+  assert.equal(checkDiffSize(collected, 100000, { nonInteractive: true }).decision, 'proceed');
+});
+
+test('unattended mode comes from the flag, SWAG_SCAN_NONINTERACTIVE, or CI', async () => {
+  const { isNonInteractive } = await import('../scripts/lib/common.mjs');
+  assert.equal(isNonInteractive({}, {}), false);
+  assert.equal(isNonInteractive({ 'non-interactive': true }, {}), true);
+  assert.equal(isNonInteractive({}, { SWAG_SCAN_NONINTERACTIVE: '1' }), true);
+  assert.equal(isNonInteractive({}, { CI: 'true' }), true);
+  assert.equal(isNonInteractive({}, { CI: 'false' }), false);
+});
