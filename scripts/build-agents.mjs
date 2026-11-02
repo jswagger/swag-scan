@@ -59,6 +59,16 @@ const RUN_FILES = {
   'security-auditor': 'diff and scan (the scanner output: candidates and coverage)',
 };
 
+const SAVE = '${CLAUDE_PLUGIN_ROOT}/skills/review-tools-common/save-findings.mjs';
+const NATIVE_FORMAT = `Write JSON with a Bash heredoc to \`.swag-scan/run/findings-input.json\`: \`{ "findings": [ ... ], "clean": [ { "area", "note" } ], "dismissed": [ { "rule", "file", "line", "reason" } ] }\`. Each finding has: \`severity\` (\`critical\` 🔴, \`design\` 🟡 feature gap or design issue, \`minor\` ✅ cleanup), \`title\`, \`file\` and \`line\` (the line in the new version of the file), \`flaggedText\` (the exact code text on that line, so the finding can be found again after fixes), \`rule\`, \`evidence\` (required for critical: a concrete failing input or state), \`verify\` (required for design: the one thing to check), \`recommendation\` (required for minor), \`disposition\` and \`criteria\`. Then run \`node ${SAVE} --agent AGENT --input .swag-scan/run/findings-input.json\`.`;
+
+/** How each agent hands in its findings, and how its tool's own labels map onto the three severities. */
+const SAVE_STEPS = {
+  analyst: `Save the Bug Hunter findings file you already wrote (\`.swag-scan/run/findings.json\`) with \`node ${SAVE} --agent analyst --format bug-hunter --input .swag-scan/run/findings.json\`. Probable bugs become critical and suspicious items become design issues. You may add \`criteria\` (the ticket's acceptance-criterion ids, from \`.swag-scan/run/summary.json\` under \`ticket.criteriaIds\`) and \`confidence\` (high, medium or low) to any finding that relates to a criterion. Every disposition is \`needs-decision\` because you are report-only.`,
+  inspector: `${NATIVE_FORMAT.replace('AGENT', 'inspector')} Map Code Sweeper's labels: Unclean and Dusty are normally \`minor\`; use \`design\` only for a real design problem (for example business logic repeated in several places). \`disposition\`: \`auto-fixed\` if you edited the file (add \`fixNote\` saying what changed), \`would-auto-fix\` if a safe fix exists but auto-fix was off for this run, and \`needs-decision\` for anything never auto-fixed (such as Dusty items).`,
+  'security-guard': `${NATIVE_FORMAT.replace('AGENT', 'security-guard')} Map Security Auditor's labels: High Risk is \`critical\`, Suspicious is \`design\`, and low-impact hardening is \`minor\`. Put the evidence and the impact together in \`evidence\`, and the remediation in \`recommendation\`. Every disposition is \`needs-decision\` because you are report-only.`,
+};
+
 const read = (path) => readFileSync(path, 'utf8').trim();
 
 function job(agent, spec) {
@@ -76,7 +86,8 @@ The scripts have already run. The \`swag-scan\` command scanned this repository 
 3. Start your report with the coverage line from your entry, and list every file under Unchecked. Never put an unchecked file under Clean, and never call the whole change clean when files are unchecked.
 4. If the size gate hit (\`sizeGate.decision\` is \`review-riskiest\`), say what was skipped. You never ask the user questions. If you cannot decide, report the item as suspicious and say what to verify.
 5. ${editing}
-6. Return your report and one line naming where the detailed files are. Do not paste raw JSON.
+6. Save your findings in the shared format, so one report can combine all three agents. ${SAVE_STEPS[agent.id]} It checks your findings and prints every problem if something is missing; fix those and run it again. Do this even when you found nothing (an empty \`findings\` list).
+7. Return your report and one line naming where the detailed files are. Do not paste raw JSON.
 
 ## Limits
 

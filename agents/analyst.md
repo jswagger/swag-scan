@@ -52,7 +52,8 @@ The scripts have already run. The `swag-scan` command scanned this repository wi
 3. Start your report with the coverage line from your entry, and list every file under Unchecked. Never put an unchecked file under Clean, and never call the whole change clean when files are unchecked.
 4. If the size gate hit (`sizeGate.decision` is `review-riskiest`), say what was skipped. You never ask the user questions. If you cannot decide, report the item as suspicious and say what to verify.
 5. You are report-only. You never edit or create source files.
-6. Return your report and one line naming where the detailed files are. Do not paste raw JSON.
+6. Save your findings in the shared format, so one report can combine all three agents. Save the Bug Hunter findings file you already wrote (`.swag-scan/run/findings.json`) with `node ${CLAUDE_PLUGIN_ROOT}/skills/review-tools-common/save-findings.mjs --agent analyst --format bug-hunter --input .swag-scan/run/findings.json`. Probable bugs become critical and suspicious items become design issues. You may add `criteria` (the ticket's acceptance-criterion ids, from `.swag-scan/run/summary.json` under `ticket.criteriaIds`) and `confidence` (high, medium or low) to any finding that relates to a criterion. Every disposition is `needs-decision` because you are report-only. It checks your findings and prints every problem if something is missing; fix those and run it again. Do this even when you found nothing (an empty `findings` list).
+7. Return your report and one line naming where the detailed files are. Do not paste raw JSON.
 
 ## Limits
 

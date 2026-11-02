@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { buildAgents } from '../../../scripts/build-agents.mjs';
+import { evaluateCommand } from '../../../hooks/guard-bash.mjs';
 import { AGENTS } from '../swag-scan.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -82,4 +83,26 @@ test('the agents do not mention each other\'s tools as their own belt', () => {
   const security = agents.find(({ agent }) => agent.id === 'security-guard').body;
   assert.match(security, /report-only/i);
   assert.doesNotMatch(security, /skills\/bug-hunter\/SKILL\.md/);
+});
+
+test('every command an agent is told to run is allowed by the Bash guard, and agents save their findings', () => {
+  for (const { body, agent, path } of agents) {
+    const commands = [...body.matchAll(/`(node \$\{CLAUDE_PLUGIN_ROOT\}[^`]+)`/g)].map((match) => match[1].replaceAll('${CLAUDE_PLUGIN_ROOT}', ROOT));
+    assert(commands.length > 0, `${path} names no commands`);
+    for (const command of commands) {
+      assert.equal(evaluateCommand(command, { cwd: '/work/repo', pluginRoot: ROOT }).allow, true, `${path}: the guard would block: ${command}`);
+    }
+    assert(body.includes(`save-findings.mjs --agent ${agent.id}`), `${path} does not tell the agent to save its findings`);
+    assert.match(body, /Save your findings in the shared format/);
+  }
+  const by = Object.fromEntries(agents.map((entry) => [entry.agent.id, entry.body]));
+  assert.match(by.analyst, /--format bug-hunter/);
+  assert.match(by.inspector, /`auto-fixed`/);
+  assert.match(by['security-guard'], /Every disposition is `needs-decision` because you are report-only/);
+});
+
+test('the heredoc that saves findings is allowed by the guard', () => {
+  const command = ['cat > .swag-scan/run/findings-input.json <<\'EOF\'', '{"findings": []}', 'EOF',
+    `node ${ROOT}/skills/review-tools-common/save-findings.mjs --agent inspector --input .swag-scan/run/findings-input.json`].join('\n');
+  assert.equal(evaluateCommand(command, { cwd: '/work/repo', pluginRoot: ROOT }).allow, true);
 });

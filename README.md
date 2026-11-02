@@ -56,6 +56,26 @@ Fewer permission prompts: add `Bash(swag-scan *)` to your allowed commands. The 
 
 The three agents have limits: none can create files, only the Inspector can edit (and only with auto-fix on), and the Analyst and Security Guard are report-only. A plugin hook also restricts what they can run in Bash to the Swag Scan scripts, read-only git and read-only file commands, and lets them write only inside `.swag-scan/`. The hook ignores your own session and every other agent. It is a guardrail, not a sandbox.
 
+### Findings format
+
+Each agent hands in its judged findings in one shared shape, saved by `skills/review-tools-common/save-findings.mjs` to `.swag-scan/run/findings-<agent>.json`. The script checks the findings, assigns ids (`AN-1`, `IN-1`, `SG-1`, critical first) and adds the tool, base, coverage line and counts.
+
+| Severity | Meaning | Needs |
+| --- | --- | --- |
+| 🔴 `critical` | Will break or is exploitable | `evidence` (a concrete failing input or state) and a `recommendation` or something to `verify` |
+| 🟡 `design` | Feature gap or design issue | `verify`: the one thing to check |
+| ✅ `minor` | Cleanup | `recommendation` |
+
+| Disposition | Meaning |
+| --- | --- |
+| `needs-decision` | The developer must weigh it. The default, and the only one the Analyst and Security Guard can use (they are report-only). |
+| `auto-fixed` | The Inspector fixed it. Needs a `fixNote`. Listed in the report, not commented on in a review view. |
+| `would-auto-fix` | A safe fix exists but auto-fix was off for this run (for example the first, report-only run). |
+
+Other fields: `title`, `rule`, `file` and `line` (the line in the new version of the file, or a `locations` list), `flaggedText` (the exact code on that line, so the finding can be found again after fixes), `criteria` (ids of the ticket's acceptance criteria it relates to, checked against the ticket), `confidence`, and `voiceLine` (the agent's one-sentence voice, kept apart from the facts). The Analyst can hand in Bug Hunter's own findings file with `--format bug-hunter`: probable bugs become critical, suspicious items become design issues.
+
+Ticket criterion status (todo, done, future) is saved separately in `.swag-scan/run/ticket-report.json` for the report, and kept out of the files the agents read, because what is already built would bias a review.
+
 ### Run everything at once
 
 One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, it uses no model tokens, and it changes no files:
