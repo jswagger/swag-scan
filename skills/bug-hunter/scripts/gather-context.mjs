@@ -1,11 +1,19 @@
 #!/usr/bin/env node
 // Gathers optional repository and ticket context for the review agent.
-// Usage: collect-diff.mjs ... | gather-context.mjs --config <path> [--ticket <name>] [--root <dir>]
+// Usage: collect-diff.mjs ... | gather-context.mjs --config <path> [--ticket <id-or-path>] [--ticket-dir <dir>]
+//        [--branch <name>] [--root <dir>]
+//
+// The ticket is found from --ticket (an ID such as PROJ-123, or a path to a file), else ticketContext.ticketName,
+// else the ticket ID in the branch name. A bare ID is looked up in the ticket folder: --ticket-dir,
+// $SWAG_SCAN_TICKET_DIR, "ticketFolder" in ~/.swag-scan/settings.json, then ticketContext.path.
+// Reviewers receive only the ticket's description and acceptance criteria (see review-tools-common/ticket.mjs).
 //
 // Repository context searches from each changed file's folder up to the repository root.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { findTicketFile, looksLikePath, parseTicket, resolveTicketFolder, ticketIdFromBranch } from '../../review-tools-common/ticket.mjs';
 import { isMain, loadConfig, parseArgs, readJsonInput, runCli } from './lib/common.mjs';
 
 const MAX_REPOSITORY_CONTEXT_FILES = 5;
@@ -92,20 +100,75 @@ export function gatherRepositoryContext(changedPaths, settings, root = process.c
   return { enabled: true, files, totalLines, notes };
 }
 
-export function gatherTicketContext(settings, ticketOverride) {
-  if (!settings) return { enabled: false, found: false, notes: [] };
-  const ticketName = ticketOverride ?? settings.ticketName;
-  if (!ticketName) return { enabled: true, found: false, notes: ['ticketContext is set but no ticket name was provided.'] };
-  if (/[\\/]/.test(ticketName)) return { enabled: true, found: false, notes: ['Ticket name must not contain path separators.'] };
+/**
+ * Resolves and reads the ticket. `options`: { branch, folderFlag, env, root, userSettings }.
+ * Returns the reviewer-safe text in `content`, plus the parsed `acceptanceCriteria` and `repositories`.
+ */
+export function gatherTicketContext(settings, ticketOverride, options = {}) {
+  const { branch, folderFlag, env = process.env, root = process.cwd(), userSettings } = options;
+  const maxLines = settings?.maxLines ?? 500;
+  const folder = resolveTicketFolder({ flag: folderFlag, env, userSettings, repoPath: settings?.path });
 
-  for (const extension of ['.md', '.txt']) {
-    const candidate = join(resolve(settings.path), `${ticketName}${extension}`);
-    if (!isFile(candidate)) continue;
-    const { content, truncated } = readCapped(candidate, settings.maxLines);
-    return { enabled: true, found: true, ticketName, path: candidate, truncated, content, notes: [] };
+  let source;
+  let ticketName = ticketOverride ?? settings?.ticketName;
+  if (ticketOverride) source = '--ticket';
+  else if (ticketName) source = 'config';
+  else {
+    ticketName = ticketIdFromBranch(branch);
+    if (ticketName) source = 'branch name';
   }
-  const where = existsSync(settings.path) ? settings.path : `${settings.path} (folder not found)`;
-  return { enabled: true, found: false, ticketName, notes: [`No ${ticketName}.md or ${ticketName}.txt found in ${where}.`] };
+
+  const nothing = (notes) => ({ enabled: Boolean(settings || folder), found: false, ...(ticketName ? { ticketName } : {}), notes });
+  if (!ticketName) {
+    // Quiet when the feature is not set up at all; helpful when a folder is configured but no ID could be found.
+    return nothing(settings || folder ? ['No ticket given and no ticket ID (like PROJ-123) found in the branch name.'] : []);
+  }
+
+  let path;
+  if (ticketOverride && looksLikePath(ticketName)) {
+    const candidate = isAbsolute(ticketName) ? ticketName : resolve(root, ticketName);
+    if (!isFile(candidate)) return nothing([`Ticket file not found: ${candidate}`]);
+    path = candidate;
+  } else {
+    if (/[\\/]/.test(ticketName)) return nothing(['A configured ticket name must not contain path separators.']);
+    if (!folder) {
+      return nothing([`Cannot look up ${ticketName}: no ticket folder is set. Use --ticket-dir, SWAG_SCAN_TICKET_DIR, "ticketFolder" in ~/.swag-scan/settings.json, or ticketContext.path.`]);
+    }
+    path = findTicketFile(folder.path, ticketName);
+    if (!path) {
+      const where = existsSync(folder.path) ? folder.path : `${folder.path} (folder not found)`;
+      return nothing([`No ${ticketName}.md or ${ticketName}.txt found in ${where} (folder from ${folder.source}).`]);
+    }
+  }
+
+  const parsed = parseTicket(readFileSync(path, 'utf8'));
+  const lines = parsed.review.split(/\r?\n/);
+  const truncated = lines.length > maxLines;
+  return {
+    enabled: true,
+    found: true,
+    ticketName,
+    source,
+    path,
+    title: parsed.title,
+    truncated,
+    content: (truncated ? lines.slice(0, maxLines) : lines).join('\n'),
+    acceptanceCriteria: parsed.acceptanceCriteria,
+    repositories: parsed.repositories,
+    omittedSections: parsed.omittedSections,
+    notes: [
+      ...parsed.notes,
+      ...(parsed.omittedSections.length ? [`Not passed to reviewers (not requirements): ${parsed.omittedSections.join(', ')}.`] : []),
+    ],
+  };
+}
+
+function currentBranch(root) {
+  try {
+    return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return undefined;
+  }
 }
 
 if (isMain(import.meta.url)) {
@@ -117,7 +180,11 @@ if (isMain(import.meta.url)) {
     const root = resolve(flags.root ?? process.cwd());
     const result = {
       repository: gatherRepositoryContext(paths, config.repositoryContext, root),
-      ticket: gatherTicketContext(config.ticketContext, flags.ticket),
+      ticket: gatherTicketContext(config.ticketContext, flags.ticket, {
+        branch: flags.branch ?? currentBranch(root),
+        folderFlag: flags['ticket-dir'],
+        root,
+      }),
     };
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   });

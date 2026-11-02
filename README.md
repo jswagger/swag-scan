@@ -73,11 +73,37 @@ A regression safety net. It looks for removed guards, dropped awaits, changed co
 | --- | --- | --- |
 | `autoFix` | Fix unambiguous 🔴 bugs. When `false`, no files are ever edited | `false` |
 | `diff.maxDiffBytes` | Size gate for the diff | `102400` |
-| `ticketContext` | Ticket file used as acceptance criteria (`--ticket <name>` overrides) | `null` |
+| `ticketContext` | Ticket used as acceptance criteria. `--ticket <id-or-path>` overrides; see [Ticket files](#ticket-files) | `null` |
 | `repositoryContext` | Nearby docs for local patterns and invariants | `null` |
 | `rules.disabled` / `rules.severityOverrides` | Tune noisy rules | none |
 | `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
 | `report.outputDir` | Where reports are written | `.bug-hunter/reports` |
+
+### Ticket files
+
+Bug Hunter checks the change against a ticket's acceptance criteria. It needs no configuration if the branch name holds a ticket ID (such as `feature/PROJ-123`) and it can find the ticket folder.
+
+- **Which ticket:** `--ticket PROJ-123` (an ID) or `--ticket path/to/file.md` (a path, inside or outside the repo). With neither, the ID is taken from the branch name.
+- **Where tickets live:** an ID is looked up as `PROJ-123.md` or `.txt` (or `PROJ-123-any-title.md`) in the first of: `--ticket-dir`, the `SWAG_SCAN_TICKET_DIR` environment variable, `ticketFolder` in `~/.swag-scan/settings.json` (a per-user file, outside any repo), or `ticketContext.path` in the repo's config. There is no built-in default folder.
+- **What reviewers see:** only the title, the description and the acceptance criteria. Implementation or development logs, notes and any other section are removed, because they describe what was built and would bias the review. The report names the sections that were left out. A ticket with no headings is passed whole, with a note.
+- **Format assumed (tolerant, markdown):**
+
+  ```markdown
+  # PROJ-123: Add login
+
+  Free text or a "## Description" section.
+
+  ## Acceptance Criteria
+  | # | Title | Description | Repository | Status |
+  |---|-------|-------------|------------|--------|
+  | 1 | Login form | Shows email and password | web-app | 🔲 Todo |
+
+  ## Repositories
+  - web-app: feature/PROJ-123
+  - api (feature/PROJ-123, base develop)
+  ```
+
+  Table columns may be in any order and any subset, and bullets, numbered items or checkboxes also work for criteria. Status is `🔲 Todo`, `✅ Done` or `🔮 Future` (words such as "done" are understood). Repositories can be a table, or bullets like `name: branch`, `name (branch, base ref)` or `name @ branch`. Status and repositories are parsed for the later consolidated report and multi-repo runs; reviewers are not given the status.
 
 ## Code Sweeper
 

@@ -1,7 +1,7 @@
 ---
 name: bug-hunter
 description: 'Review a code diff for regressions and new bugs introduced by the change: removed guards, dropped awaits, changed contracts and boundaries, broken callers, and edge cases from acceptance criteria. Use before opening or merging a pull request.'
-argument-hint: 'Optional base ref (e.g. origin/main) and --ticket <name>'
+argument-hint: 'Optional base ref (e.g. origin/main), --ticket <id-or-path>, --ticket-dir <dir>'
 ---
 
 # Bug Hunter
@@ -21,7 +21,7 @@ Read [config.json](./config.json) first. Key settings:
 - `autoFix` (default `false`): a hard gate. When `false`, **never edit any file**. When `true`, fix only 🔴 Probable Bugs where the correct fix is unambiguous, never 🟡, then tell the user to run their tests.
 - `diff.maxDiffBytes` (default 102400): size gate; see step 2.
 - `repositoryContext`: `null` skips it. Otherwise `{ fileNames, maxLinesPerFile, maxTotalLines }`; matching files are searched from each changed file's folder up to the repository root, with the five nearest unique files included at most.
-- `ticketContext`: `null` skips it. Otherwise `{ path, ticketName, maxLines }`; the ticket file is `<ticketName>.md` or `.txt`. A `--ticket <name>` argument overrides `ticketName`.
+- `ticketContext`: optional `{ path, ticketName, maxLines }`. The ticket is chosen from `--ticket` (an ID such as `PROJ-123`, or a path to a file), else `ticketName`, else the ID in the branch name (`feature/PROJ-123`). An ID is looked up as `<ID>.md` or `.txt` in the first ticket folder set of: `--ticket-dir`, `SWAG_SCAN_TICKET_DIR`, `ticketFolder` in `~/.swag-scan/settings.json`, `ticketContext.path`. With a user-level folder set, `ticketContext` can stay `null`. No path is built in.
 - `rules.disabled`, `rules.severityOverrides`, and inline `bug-hunter-ignore[: RULE]` comments tune script noise.
 - `models.<agent>.basic` / `.advanced`: preferred model selectors for your agent (`claude` or `copilot`); `null` or missing means the agent's default model. If model-selectable subagents are unavailable or the entry is unset, do both passes yourself and do not claim a model switch.
 - `report.outputDir` (default `.bug-hunter/reports`): where reports are written. Add `.bug-hunter/` to `.gitignore`.
@@ -36,7 +36,7 @@ CFG="$TOOLS/bug-hunter/config.json"; S="$TOOLS/bug-hunter/scripts"; RUN=.bug-hun
 mkdir -p "$RUN"
 node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$CFG" [base-ref] > "$RUN/diff.json"
 node "$S/check-diff-size.mjs"  --config "$CFG" --diff "$RUN/diff.json"
-node "$S/gather-context.mjs"   --config "$CFG" --diff "$RUN/diff.json" [--ticket NAME] > "$RUN/context.json"
+node "$S/gather-context.mjs"   --config "$CFG" --diff "$RUN/diff.json" [--ticket ID_OR_PATH] [--ticket-dir DIR] > "$RUN/context.json"
 node "$S/scan-patterns.mjs"    --config "$CFG" --diff "$RUN/diff.json" > "$RUN/scan.json"
 node "$S/find-callers.mjs"     --config "$CFG" --diff "$RUN/diff.json" --scan "$RUN/scan.json" > "$RUN/callers.json"
 node "$S/build-packets.mjs"    --config "$CFG" --diff "$RUN/diff.json" --scan "$RUN/scan.json" --callers "$RUN/callers.json" [--budget-bytes N] > "$RUN/packets.json"
@@ -44,7 +44,7 @@ node "$S/build-packets.mjs"    --config "$CFG" --diff "$RUN/diff.json" --scan "$
 
 1. **Collect.** Use the provided base ref, else `diff.baseRef`. If the diff is empty, report that and stop.
 2. **Size gate.** Run `check-diff-size` and follow its `decision` (it measures the changed-line text, not the collector's JSON, which is about twice as large). `proceed`: continue. `ask`: show the user its `warning` and the largest files, and ask whether to review in full or only the highest-risk changes; for the latter, pass `--budget-bytes` (use `diff.maxDiffBytes`) to `build-packets`. `review-riskiest`: this is an unattended run (`--non-interactive`, `SWAG_SCAN_NONINTERACTIVE=1`, or `CI`), so never ask. Pass `--non-interactive --budget-bytes <budgetBytes>` to `build-packets`, and state its `notice` in your summary. In every case omitted packets are disclosed in the report. Run `check-diff-size` with `--non-interactive` whenever no one is available to answer, and never wait on a prompt in that case.
-3. **Context.** `context.json` holds repository and ticket context (empty when those settings are null). Treat repository context as guidance on local patterns and invariants. Treat ticket content as the acceptance criteria: derive the edge cases a correct change must handle and check each against the packets. Note any `notes` entry (for example, ticket not found) in the final summary.
+3. **Context.** `context.json` holds repository and ticket context (empty when those settings are null). Treat repository context as guidance on local patterns and invariants. `ticket.content` is already limited to the ticket's title, description and acceptance criteria; implementation or development logs are removed on purpose because they describe what was built and bias a review, so never go looking for them. Treat that content as the acceptance criteria: derive the edge cases a correct change must handle and check each against the packets. Note any `notes` entry (for example, ticket not found) in the final summary.
 4. **Triage (basic model).** For each packet in `packets.json` (already ranked by risk), decide whether each `findings` entry is a true positive in context. Look at `callers` for any `SIGNATURE_CHANGED` hint: does an outside caller still rely on the old contract? Record dismissed findings with a reason. A `confidence: "low"` hint is never reported on its own; surface it only if you confirm it.
 5. **Deep review (advanced model).** Review every remaining packet, highest risk first. Load only the [references](./references/) files for languages in `repository_type`:
    - [javascript-typescript.md](./references/javascript-typescript.md)

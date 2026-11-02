@@ -141,7 +141,7 @@ test('repository context never reads above the repository root', (context) => {
 });
 
 test('ticket context is skipped when settings are null', () => {
-  assert.equal(gatherTicketContext(null).enabled, false);
+  assert.equal(gatherTicketContext(null, undefined, { env: {}, userSettings: {} }).enabled, false);
 });
 
 test('ticket context matches by name with .md preferred over .txt', (context) => {

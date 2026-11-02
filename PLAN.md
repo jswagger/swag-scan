@@ -824,4 +824,8 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
   (about half the collector's JSON). Step 3b: `build-packets` used to cut any contiguous change over 300 lines (`MAX_HUNK_LINES`) and
   mark the packet `truncated`, never disclosed, so a 500-line new file was partly reviewed in silence. It now splits such changes into
   several packets, so every changed line is reviewed or listed as omitted. 151 of 151 tests pass.
+  Step 6 done (Bug Hunter side): `review-tools-common/ticket.mjs` finds the ticket (ID from the branch name, `--ticket` as ID or path, folder from
+  `--ticket-dir`, `SWAG_SCAN_TICKET_DIR`, `~/.swag-scan/settings.json` or repo config), parses it tolerantly, and gives reviewers only title,
+  description and acceptance criteria (status and logs removed). It also parses `## Repositories` for the multi-repo step. The user settings
+  file `~/.swag-scan/settings.json` is a first piece of the onboarding "saved answers" idea. 165 of 165 tests pass. Format is in the README.
   Plan: phase 1 tools (collector fixes, language coverage, non-interactive gate, ticket handling), phase 2 agents and orchestrator, phase 3 event log, multi-repo, dashboard.
