@@ -27,14 +27,19 @@
 
 ## Resume here
 
-Last updated: 2026-10-31
+Last updated: 2026-11-02
 
-- **Done:** repo flattened to `skills/`, agent-neutral paths, Claude Code plugin and marketplace manifests,
-  Copilot installer, per-agent model roles, root README, CI workflow, Code Sweeper end-to-end test,
-  placeholder plugin icon. 134 of 134 tests pass on Node 24, and `claude plugin validate . --strict` passes.
-- **Vision captured (placeholders only):** three agents (Analyst, Inspector, Security Guard), new planned skills, orchestration and
-  levels, onboarding wizard and setup scan, and the default-run golden path. See the roadmap sections. Nothing there is built.
-- **Next:** the live agent tests below (nothing has run through a real agent session yet), then push the branch.
+- **Scope:** Claude Code first (see Decisions). Copilot and Codex later, through the neutral core.
+- **Prototype, Phase 1 (tools) is done:** base auto-detect, empty-diff message, language coverage (⚪ Unchecked), unattended size gate, large changes
+  split into packets, ticket handling, result cache. Live agent tests are parked.
+- **Prototype, Phase 2 (agents) in progress:** deterministic orchestrator `skills/review-tools-common/swag-scan.mjs run` is built.
+  Persona sources (`skills/review-tools-common/personas/`) and the generator `scripts/build-agents.mjs` produce `agents/{analyst,inspector,security-guard}.md`.
+  **Next:** the `/swag-scan` entry command (runs the orchestrator, hands each agent its leads in parallel), a `bin/swag-scan` wrapper, a `hooks/hooks.json`
+  that blocks risky Bash commands, a recommended allow rule, then the consolidated report with acceptance-criteria rows (step 7).
+- **Phase 3 (package):** event log, multi-repo worktrees, dashboard from `assets/agents/live-view-mockup.html`.
+- **Future, not yet:** every agent (Analyst, Inspector, Security Guard) gets edit capability. Needs safe-fix tooling and a separate-commit flow first.
+  Today only the Inspector can edit, and only with auto-fix on.
+- Tests: 190 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
 - Update this section at the end of every session, and tick boxes as you go.
 
 ## To do
@@ -71,6 +76,8 @@ Test repo: `/tmp/swag-test` (`main` has a guarded, awaited, parameterized `app.j
 - [ ] **Delete `PLAN.md`** in its own commit.
 
 ## Backlog (later, not blocking the PR)
+- [ ] **Agent turn cap:** each agent has `maxTurns: 50` (set in `scripts/build-agents.mjs`), a guess until real runs show how many turns a review needs.
+      Revisit with data, and make hitting the cap visible ("I ran out of turns, so this review is partial") instead of a quiet stop.
 - [ ] Designer feedback on the logo, then redo `.claude-plugin/icon.png` and the README logo. The current icon is a placeholder.
       Consider a dark-mode README logo via `<picture>`.
 - [ ] Decide whether the Copilot installer should copy `test/` folders. It currently skips them.
