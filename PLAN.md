@@ -828,4 +828,7 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
   `--ticket-dir`, `SWAG_SCAN_TICKET_DIR`, `~/.swag-scan/settings.json` or repo config), parses it tolerantly, and gives reviewers only title,
   description and acceptance criteria (status and logs removed). It also parses `## Repositories` for the multi-repo step. The user settings
   file `~/.swag-scan/settings.json` is a first piece of the onboarding "saved answers" idea. 165 of 165 tests pass. Format is in the README.
+  Cache done (Bug Hunter): `review-tools-common/cache.mjs` (`check` and `store`) keys a finished run by HEAD, base commit, config, ticket text and a
+  fingerprint of the tool's own scripts; results live in `.swag-scan/cache/` (gitignored); never cached with uncommitted changes. Code Sweeper
+  and Security Auditor adopt it through the Phase 2 orchestrator. Phase 1 is complete except the live agent tests (parked).
   Plan: phase 1 tools (collector fixes, language coverage, non-interactive gate, ticket handling), phase 2 agents and orchestrator, phase 3 event log, multi-repo, dashboard.

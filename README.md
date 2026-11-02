@@ -79,6 +79,10 @@ A regression safety net. It looks for removed guards, dropped awaits, changed co
 | `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
 | `report.outputDir` | Where reports are written | `.bug-hunter/reports` |
 
+### Re-runs are cached
+
+When nothing has changed since the last review (same commit, same base, same config and ticket, same tool version), Bug Hunter returns the earlier report instead of repeating the review. Results are kept in `.swag-scan/cache/` (add it to `.gitignore`). Nothing is cached while you have uncommitted changes, and asking for a fresh run (`--fresh`) skips the cache.
+
 ### Ticket files
 
 Bug Hunter checks the change against a ticket's acceptance criteria. It needs no configuration if the branch name holds a ticket ID (such as `feature/PROJ-123`) and it can find the ticket folder.

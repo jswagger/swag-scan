@@ -37,6 +37,7 @@ mkdir -p "$RUN"
 node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$CFG" [base-ref] > "$RUN/diff.json"
 node "$S/check-diff-size.mjs"  --config "$CFG" --diff "$RUN/diff.json"
 node "$S/gather-context.mjs"   --config "$CFG" --diff "$RUN/diff.json" [--ticket ID_OR_PATH] [--ticket-dir DIR] > "$RUN/context.json"
+node "$TOOLS/review-tools-common/cache.mjs" check --tool bug-hunter --config "$CFG" --diff "$RUN/diff.json" --context "$RUN/context.json" [--fresh] > "$RUN/cache.json"
 node "$S/scan-patterns.mjs"    --config "$CFG" --diff "$RUN/diff.json" > "$RUN/scan.json"
 node "$S/find-callers.mjs"     --config "$CFG" --diff "$RUN/diff.json" --scan "$RUN/scan.json" > "$RUN/callers.json"
 node "$S/build-packets.mjs"    --config "$CFG" --diff "$RUN/diff.json" --scan "$RUN/scan.json" --callers "$RUN/callers.json" [--budget-bytes N] > "$RUN/packets.json"
@@ -44,6 +45,7 @@ node "$S/build-packets.mjs"    --config "$CFG" --diff "$RUN/diff.json" --scan "$
 
 1. **Collect.** Use the provided base ref, else `diff.baseRef`. If the diff is empty, report that and stop.
 2. **Size gate.** Run `check-diff-size` and follow its `decision` (it measures the changed-line text, not the collector's JSON, which is about twice as large). `proceed`: continue. `ask`: show the user its `warning` and the largest files, and ask whether to review in full or only the highest-risk changes; for the latter, pass `--budget-bytes` (use `diff.maxDiffBytes`) to `build-packets`. `review-riskiest`: this is an unattended run (`--non-interactive`, `SWAG_SCAN_NONINTERACTIVE=1`, or `CI`), so never ask. Pass `--non-interactive --budget-bytes <budgetBytes>` to `build-packets`, and state its `notice` in your summary. In every case omitted packets are disclosed in the report. Run `check-diff-size` with `--non-interactive` whenever no one is available to answer, and never wait on a prompt in that case.
+   **Cache.** After `context.json`, read `cache.json`. If `hit` is true, return `entry.summary` and the paths in `entry.reports` with the `reason`, and stop: nothing has changed since that review. A miss continues normally. `--fresh` (the user asks to re-run) forces a miss. Nothing is cached while there are uncommitted changes.
 3. **Context.** `context.json` holds repository and ticket context (empty when those settings are null). Treat repository context as guidance on local patterns and invariants. `ticket.content` is already limited to the ticket's title, description and acceptance criteria; implementation or development logs are removed on purpose because they describe what was built and bias a review, so never go looking for them. Treat that content as the acceptance criteria: derive the edge cases a correct change must handle and check each against the packets. Note any `notes` entry (for example, ticket not found) in the final summary.
 4. **Triage (basic model).** For each packet in `packets.json` (already ranked by risk), decide whether each `findings` entry is a true positive in context. Look at `callers` for any `SIGNATURE_CHANGED` hint: does an outside caller still rely on the old contract? Record dismissed findings with a reason. A `confidence: "low"` hint is never reported on its own; surface it only if you confirm it.
 5. **Deep review (advanced model).** Review every remaining packet, highest risk first. Load only the [references](./references/) files for languages in `repository_type`:
@@ -65,6 +67,12 @@ node "$S/build-packets.mjs"    --config "$CFG" --diff "$RUN/diff.json" --scan "$
 
    ```sh
    node "$S/write-report.mjs" --config "$CFG" --input "$RUN/findings.json" --scan "$RUN/scan.json" --packets "$RUN/packets.json"
+   ```
+
+   Then record the run so an identical re-run is instant (skip this if `cache.json` has `"cacheable": false`):
+
+   ```sh
+   node "$TOOLS/review-tools-common/cache.mjs" store --tool bug-hunter --key <key from cache.json> --report <markdown path> --report <json path> --summary "<one-line summary>"
    ```
 
    It prints the markdown path (for the human) and JSON path (for agents). It rejects findings missing a scenario or check, so fix and re-run on error. Return both paths and a short summary. When running as a subagent, return the JSON path as the primary result.
