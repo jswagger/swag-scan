@@ -32,14 +32,17 @@ Last updated: 2026-11-02
 - **Scope:** Claude Code first (see Decisions). Copilot and Codex later, through the neutral core.
 - **Prototype, Phase 1 (tools) is done:** base auto-detect, empty-diff message, language coverage (⚪ Unchecked), unattended size gate, large changes
   split into packets, ticket handling, result cache. Live agent tests are parked.
-- **Prototype, Phase 2 (agents) in progress:** deterministic orchestrator `skills/review-tools-common/swag-scan.mjs run` is built.
-  Persona sources (`skills/review-tools-common/personas/`) and the generator `scripts/build-agents.mjs` produce `agents/{analyst,inspector,security-guard}.md`.
-  **Next:** the `/swag-scan` entry command (runs the orchestrator, hands each agent its leads in parallel), a `bin/swag-scan` wrapper, a `hooks/hooks.json`
-  that blocks risky Bash commands, a recommended allow rule, then the consolidated report with acceptance-criteria rows (step 7).
+- **Prototype, Phase 2 (agents) mostly built:** orchestrator `skills/review-tools-common/swag-scan.mjs run`; persona sources in
+  `skills/review-tools-common/personas/` and generator `scripts/build-agents.mjs` -> `agents/{analyst,inspector,security-guard}.md` (`maxTurns: 50`);
+  entry skill `claude-code/skills/swag-scan/SKILL.md` (`/swag-scan:swag-scan`, registered through the manifest `skills` key); `bin/swag-scan` wrapper;
+  `hooks/hooks.json` + `hooks/guard-bash.mjs` (default-deny Bash allowlist for the three agents only, keyed on hook `agent_type`).
+  **Next:** the consolidated report with acceptance-criteria rows (step 7), the shared findings JSON (with `disposition`), then a live Claude Code test.
+  **Unverified until a real session:** that `agent_type` is `swag-scan:analyst` (or bare `analyst`) in hook input, that a skill can start the plugin agents
+  by name in parallel, and how the agents behave with the `SKILL.md` instructions.
 - **Phase 3 (package):** event log, multi-repo worktrees, dashboard from `assets/agents/live-view-mockup.html`.
 - **Future, not yet:** every agent (Analyst, Inspector, Security Guard) gets edit capability. Needs safe-fix tooling and a separate-commit flow first.
   Today only the Inspector can edit, and only with auto-fix on.
-- Tests: 190 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
+- Tests: 198 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
 - Update this section at the end of every session, and tick boxes as you go.
 
 ## To do

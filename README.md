@@ -44,6 +44,18 @@ Run it from your project root. Skills land in `.github/skills/`. Use `--target .
 
 In Claude Code, skills are namespaced: `/swag-scan:bug-hunter`. Leave off the base ref to use the configured default branch.
 
+### Claude Code: the whole crew in one command
+
+```
+/swag-scan:swag-scan [base-ref] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh]
+```
+
+The command scans with scripts only (no model, no edits), then starts the **Analyst**, **Inspector** and **Security Guard** in parallel for the ones that have leads. Each reports in its own voice. Agents with no leads are skipped, and the report says "no leads", never "clean". You can also ask for them by name, for example `@agent-swag-scan:security-guard`.
+
+Fewer permission prompts: add `Bash(swag-scan *)` to your allowed commands. The plugin puts a `swag-scan` command on the Bash path, and every run uses that one shape.
+
+The three agents have limits: none can create files, only the Inspector can edit (and only with auto-fix on), and the Analyst and Security Guard are report-only. A plugin hook also restricts what they can run in Bash to the Swag Scan scripts, read-only git and read-only file commands, and lets them write only inside `.swag-scan/`. The hook ignores your own session and every other agent. It is a guardrail, not a sandbox.
+
 ### Run everything at once
 
 One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, it uses no model tokens, and it changes no files:
