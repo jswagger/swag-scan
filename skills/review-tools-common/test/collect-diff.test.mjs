@@ -8,6 +8,7 @@ import test from 'node:test';
 
 const collectorPath = fileURLToPath(new URL('../collect-diff.mjs', import.meta.url));
 const configPath = fileURLToPath(new URL('../../security-auditor/config.json', import.meta.url));
+const bugHunterConfigPath = fileURLToPath(new URL('../../bug-hunter/config.json', import.meta.url));
 const codeSweeperConfigPath = fileURLToPath(new URL('../../code-sweeper/config.json', import.meta.url));
 
 function git(directory, args) {
@@ -114,45 +115,116 @@ test('target refs compare from the merge base and retain working-tree changes', 
   assert.equal(files.has('target_only.py'), false);
 });
 
-test('configured origin/HEAD is used automatically and falls back to HEAD when absent', (context) => {
-  const directory = mkdtempSync(join(tmpdir(), 'collect-auto-base-'));
+function newRepo(context, prefix) {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
   context.after(() => rmSync(directory, { recursive: true, force: true }));
-
-  git(directory, ['init', '-q']);
+  git(directory, ['init', '-q', '-b', 'main']);
   git(directory, ['config', 'user.name', 'Code Review Tests']);
   git(directory, ['config', 'user.email', 'code-review-tests@example.invalid']);
-  writeFileSync(join(directory, 'base.py'), 'value = 1\n');
-  git(directory, ['add', 'base.py']);
-  git(directory, ['commit', '-qm', 'baseline']);
-  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: directory, encoding: 'utf8' }).trim();
+  return directory;
+}
 
-  const fallbackResult = spawnSync(process.execPath, [collectorPath, '--config', configPath], {
+function commitFile(directory, name, content, message = name) {
+  writeFileSync(join(directory, name), content);
+  git(directory, ['add', name]);
+  git(directory, ['commit', '-qm', message]);
+}
+
+function collect(directory, ...extra) {
+  return collectWith(configPath, directory, ...extra);
+}
+
+function collectWith(config, directory, ...extra) {
+  const result = spawnSync(process.execPath, [collectorPath, '--config', config, ...extra], {
     cwd: directory,
     encoding: 'utf8',
   });
-  assert.equal(fallbackResult.status, 0, fallbackResult.stderr);
-  const fallbackReport = JSON.parse(fallbackResult.stdout);
-  assert.equal(fallbackReport.requestedBaseRef, 'origin/HEAD');
-  assert.equal(fallbackReport.baseRef, 'HEAD');
-  assert.equal(fallbackReport.comparisonBase, 'HEAD');
-  assert.equal(fallbackReport.baseCommitHash, head);
-  assert.match(fallbackReport.baseCommitDate, /^\d{4}-\d\d-\d\dT/);
-  assert.match(fallbackReport.note, /fell back/);
+  assert.equal(result.status, 0, result.stderr);
+  return { report: JSON.parse(result.stdout), stderr: result.stderr };
+}
+
+test('auto base picks origin/HEAD when configured, and main on a committed feature branch', (context) => {
+  const directory = newRepo(context, 'collect-auto-base-');
+  commitFile(directory, 'base.py', 'value = 1\n');
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: directory, encoding: 'utf8' }).trim();
+
+  git(directory, ['checkout', '-q', '-b', 'feature/PROJ-1']);
+  commitFile(directory, 'feature.py', 'value = 2\n');
+
+  const { report, stderr } = collect(directory);
+  assert.equal(report.requestedBaseRef, 'auto');
+  assert.equal(report.baseRef, 'main');
+  assert.equal(report.autoDetected, true);
+  assert.equal(report.comparisonBase, head);
+  assert.equal(report.emptyDiff, false);
+  assert.deepEqual(report.files.map((file) => file.path), ['feature.py']);
+  assert.match(stderr, /resolved base main to [a-f0-9]{40} \(\d{4}-\d\d-\d\dT[^)]*\), auto-detected/);
+  assert.match(stderr, /1 changed, 0 excluded, 1 scanned; diff 0\.0 KB/);
 
   git(directory, ['update-ref', 'refs/remotes/origin/main', head]);
   git(directory, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main']);
-  writeFileSync(join(directory, 'changed.py'), 'value = 2\n');
-  const detectedResult = spawnSync(process.execPath, [collectorPath, '--config', configPath], {
-    cwd: directory,
-    encoding: 'utf8',
-  });
-  assert.equal(detectedResult.status, 0, detectedResult.stderr);
-  const detectedReport = JSON.parse(detectedResult.stdout);
-  assert.equal(detectedReport.requestedBaseRef, 'origin/HEAD');
-  assert.equal(detectedReport.baseRef, 'origin/HEAD');
-  assert.equal(detectedReport.comparisonBase, head);
-  assert.equal(detectedReport.baseCommitHash, head);
-  assert.match(detectedReport.baseCommitDate, /^\d{4}-\d\d-\d\dT/);
+  const detected = collect(directory).report;
+  assert.equal(detected.baseRef, 'origin/HEAD');
+  assert.equal(detected.comparisonBase, head);
+  assert.deepEqual(detected.files.map((file) => file.path), ['feature.py']);
+});
+
+test('auto base prefers the closest branch the work was cut from', (context) => {
+  const directory = newRepo(context, 'collect-closest-base-');
+  commitFile(directory, 'base.py', 'value = 1\n');
+  git(directory, ['checkout', '-q', '-b', 'develop']);
+  commitFile(directory, 'develop.py', 'value = 2\n');
+  git(directory, ['checkout', '-q', '-b', 'feature/PROJ-2']);
+  commitFile(directory, 'feature.py', 'value = 3\n');
+
+  const { report } = collect(directory);
+  assert.equal(report.baseRef, 'develop');
+  assert.deepEqual(report.files.map((file) => file.path), ['feature.py']);
+});
+
+test('auto base falls back to HEAD when no base branch exists', (context) => {
+  const directory = newRepo(context, 'collect-no-base-');
+  git(directory, ['checkout', '-q', '-b', 'work']);
+  commitFile(directory, 'base.py', 'value = 1\n');
+  const { report } = collect(directory);
+  assert.equal(report.baseRef, 'HEAD');
+  assert.equal(report.autoDetected, false);
+  assert.match(report.note, /No base branch/);
+});
+
+test('an empty diff is reported in one sentence with a suggested ref', (context) => {
+  const directory = newRepo(context, 'collect-empty-');
+  commitFile(directory, 'base.py', 'value = 1\n');
+  git(directory, ['checkout', '-q', '-b', 'feature/PROJ-3']);
+  commitFile(directory, 'feature.py', 'value = 2\n');
+
+  // Explicit HEAD base on a committed branch: nothing uncommitted, so the diff is empty.
+  const { report, stderr } = collect(directory, 'HEAD');
+  assert.equal(report.emptyDiff, true);
+  assert.equal(report.files.length, 0);
+  assert.match(report.suggestion, /`main`.*1 commit ahead/);
+  assert.match(stderr, /no changes found against HEAD\. Try a different base, for example `main`/);
+
+  git(directory, ['checkout', '-q', 'main']);
+  const onMain = collect(directory).report;
+  assert.equal(onMain.emptyDiff, true);
+  assert.match(onMain.suggestion, /Commit or stage your changes/);
+});
+
+test('the summary reports changed, excluded and scanned counts with the gate size', (context) => {
+  const directory = newRepo(context, 'collect-summary-');
+  commitFile(directory, 'base.py', 'value = 1\n');
+  git(directory, ['checkout', '-q', '-b', 'feature/PROJ-4']);
+  writeFileSync(join(directory, 'feature.py'), 'value = 2\n');
+  writeFileSync(join(directory, 'notes.md'), '# notes\n');
+  git(directory, ['add', '-A']);
+  git(directory, ['commit', '-qm', 'feature']);
+
+  const { report, stderr } = collectWith(bugHunterConfigPath, directory);
+  assert.equal(report.changedCount, 2);
+  assert.equal(report.excludedCount, 1);
+  assert.equal(report.diffBytes, 'value = 2'.length + 1);
+  assert.match(stderr, /2 changed, 1 excluded, 1 scanned; diff 0\.0 KB of 100\.0 KB gate/);
 });
 
 test('collector skips JS/TS generated artifacts and untracked files with tracked siblings', (context) => {

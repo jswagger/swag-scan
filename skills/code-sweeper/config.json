@@ -1,6 +1,6 @@
 {
 	"diff": {
-		"baseRef": "origin/HEAD",
+		"baseRef": "auto",
 		"untrackedMaxBytes": 100000
 	},
 	"scan": {

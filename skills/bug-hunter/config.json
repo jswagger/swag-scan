@@ -4,7 +4,7 @@
 		"copilot": { "basic": null, "advanced": null }
 	},
 	"diff": {
-		"baseRef": "HEAD",
+		"baseRef": "auto",
 		"untrackedMaxBytes": 100000,
 		"maxDiffBytes": 102400
 	},

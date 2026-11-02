@@ -54,7 +54,7 @@ node skills/review-tools-common/collect-diff.mjs \
 
 Which diff is reviewed:
 
-- No argument: the base is `origin/HEAD` (your default branch).
+- No argument: the base is detected automatically. It tries `origin/HEAD`, `develop`, `test`, `main`, then `master`, and picks the closest one your branch grew from. The collector prints which one it chose. If it finds no changes, it says so and suggests a ref.
 - A ref such as `origin/main` is compared from `git merge-base <ref> HEAD`, so target-only commits are excluded.
 - `HEAD` compares only the working tree, which is often empty on a clean feature branch.
 - Untracked, non-ignored text files are included. Binary and oversized files are skipped.

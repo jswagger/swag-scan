@@ -13,9 +13,15 @@ if (args[0] !== '--config' || !args[1] || args.length > 3) {
 
 const config = JSON.parse(readFileSync(resolve(args[1]), 'utf8'));
 const { isExcluded } = createFileFilters(config.scan);
-const requestedBaseRef = args[2] ?? config.diff.baseRef ?? 'HEAD';
+const requestedBaseRef = args[2] ?? config.diff.baseRef ?? 'auto';
+// 'auto' (and the older 'origin/HEAD' default) means: pick the most likely base branch.
+const autoBase = requestedBaseRef === 'auto' || requestedBaseRef === 'origin/HEAD';
 let baseRef = requestedBaseRef;
 let usedFallbackBase = false;
+const BASE_CANDIDATES = [
+  'origin/HEAD', 'origin/develop', 'develop', 'origin/test', 'test',
+  'origin/main', 'main', 'origin/master', 'master',
+];
 const maxUntrackedBytes = config.diff.untrackedMaxBytes ?? 100000;
 
 function runGit(gitArgs, options = {}) {
@@ -92,10 +98,54 @@ function parseDiff(diffText) {
   return files;
 }
 
-if (baseRef === 'origin/HEAD') {
+function refExists(ref) {
   try {
-    runGit(['rev-parse', '--verify', 'origin/HEAD']);
+    runGit(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    return true;
   } catch {
+    return false;
+  }
+}
+
+function commitsAhead(ref) {
+  try {
+    const mergeBase = runGit(['merge-base', ref, 'HEAD']).trim();
+    return Number(runGit(['rev-list', '--count', `${mergeBase}..HEAD`]).trim());
+  } catch {
+    return undefined;
+  }
+}
+
+// Candidates that exist and share history with HEAD, with their commits-ahead count, in priority order.
+function baseCandidates() {
+  const seen = new Set();
+  const found = [];
+  for (const ref of BASE_CANDIDATES) {
+    if (!refExists(ref)) continue;
+    const commit = runGit(['rev-parse', `${ref}^{commit}`]).trim();
+    if (seen.has(commit)) continue; // origin/main and main often point at the same commit
+    seen.add(commit);
+    const ahead = commitsAhead(ref);
+    if (ahead !== undefined) found.push({ ref, ahead });
+  }
+  return found;
+}
+
+// Prefer the closest base that HEAD is actually ahead of; otherwise the first candidate (HEAD is on the base itself).
+function pickBase(candidates) {
+  const ahead = candidates.filter((candidate) => candidate.ahead > 0);
+  if (ahead.length === 0) return candidates[0]?.ref;
+  return ahead.reduce((best, candidate) => (candidate.ahead < best.ahead ? candidate : best)).ref;
+}
+
+let otherBaseCandidates = [];
+if (autoBase) {
+  const candidates = baseCandidates();
+  const picked = pickBase(candidates);
+  if (picked) {
+    baseRef = picked;
+    otherBaseCandidates = candidates.filter((candidate) => candidate.ref !== picked);
+  } else {
     baseRef = 'HEAD';
     usedFallbackBase = true;
   }
@@ -149,7 +199,7 @@ function collectUntracked(trackedJsTsStems) {
     }
   }
 
-  return { files, skipped, excludedCount };
+  return { files, skipped, excludedCount, total: paths.length };
 }
 
 try {
@@ -173,23 +223,50 @@ try {
   const untracked = collectUntracked(trackedJsTsStems);
   const changedPaths = new Set(files.map((file) => file.path));
   const excludedCount = diffFiles.length - files.length + untracked.excludedCount;
+  const scannedFiles = [...files, ...untracked.files.filter((file) => !changedPaths.has(file.path))];
+  const changedCount = diffFiles.length + untracked.total;
+  const diffBytes = scannedFiles.reduce(
+    (sum, file) => sum + file.changes.reduce((fileSum, change) => fileSum + Buffer.byteLength(change.text, 'utf8') + 1, 0),
+    0,
+  );
+  const gateBytes = config.diff.maxDiffBytes;
+  const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+
+  // Empty diff: say so in one sentence and suggest a ref that does have changes, never a silent empty result.
+  const emptyDiff = scannedFiles.length === 0;
+  let suggestion = null;
+  if (emptyDiff) {
+    const better = (autoBase ? otherBaseCandidates : baseCandidates().filter((candidate) => candidate.ref !== baseRef))
+      .find((candidate) => candidate.ahead > 0);
+    suggestion = better
+      ? `Try a different base, for example \`${better.ref}\` (HEAD is ${better.ahead} ${better.ahead === 1 ? 'commit' : 'commits'} ahead of it).`
+      : 'Commit or stage your changes, or pass a base branch to compare against (for example `main`).';
+  }
 
   process.stderr.write(
-    `Diff collector: resolved base ${baseRef} to ${baseCommitHash} (${baseCommitDate}); `
-      + `${excludedCount} excluded ${excludedCount === 1 ? 'file' : 'files'}.\n`,
+    `Diff collector: resolved base ${baseRef} to ${baseCommitHash} (${baseCommitDate})${autoBase ? ', auto-detected' : ''}; `
+      + `${excludedCount} excluded ${excludedCount === 1 ? 'file' : 'files'}.\n`
+      + `Diff collector: ${changedCount} changed, ${excludedCount} excluded, ${scannedFiles.length} scanned; `
+      + `diff ${kb(diffBytes)}${gateBytes ? ` of ${kb(gateBytes)} gate` : ''}.\n`
+      + (emptyDiff ? `Diff collector: no changes found against ${baseRef}. ${suggestion}\n` : ''),
   );
 
   process.stdout.write(`${JSON.stringify({
     baseRef,
     requestedBaseRef,
+    autoDetected: autoBase && !usedFallbackBase,
     comparisonBase,
     baseCommitHash,
     baseCommitDate,
     excludedCount,
-    files: [...files, ...untracked.files.filter((file) => !changedPaths.has(file.path))],
+    changedCount,
+    diffBytes,
+    emptyDiff,
+    suggestion,
+    files: scannedFiles,
     skipped: untracked.skipped,
     note: usedFallbackBase
-      ? 'origin/HEAD was unavailable, so diff collection fell back to the working-tree comparison against HEAD and untracked non-ignored text files.'
+      ? 'No base branch (origin/HEAD, develop, test, main, master) was found, so diff collection fell back to the working-tree comparison against HEAD and untracked non-ignored text files.'
       : baseRef === 'HEAD'
       ? 'Diff collection is limited to working-tree changes relative to HEAD and untracked non-ignored text files.'
       : 'Diff collection starts at the merge base of the target ref and HEAD, includes working-tree changes, and includes untracked non-ignored text files.',

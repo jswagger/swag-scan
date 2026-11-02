@@ -7,7 +7,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     claude: { basic: 'haiku', advanced: 'sonnet' },
     copilot: { basic: null, advanced: null },
   },
-  diff: { baseRef: 'HEAD', untrackedMaxBytes: 100000, maxDiffBytes: 102400 },
+  diff: { baseRef: 'auto', untrackedMaxBytes: 100000, maxDiffBytes: 102400 },
   scan: { exclude: [], testFiles: { patterns: [] }, contextLines: 15 },
   rules: { disabled: [], severityOverrides: {} },
   autoFix: false,
