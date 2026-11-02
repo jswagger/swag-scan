@@ -4,6 +4,7 @@
 //
 // Usage: swag-scan.mjs run [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>]
 //                          [--agents analyst,inspector,security-guard] [--fresh] [--json]
+//        swag-scan.mjs report [--repo <dir>] [--json]     (after the agents have saved their findings)
 //
 // Results go to <repo>/.swag-scan/run/ (gitignored, replaced on every run): one JSON file per step and summary.json.
 // Exit code 0 means the scan ran (even if it found nothing); 1 means it could not run, with one plain sentence why.
@@ -13,6 +14,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkCache } from './cache.mjs';
+import { writeReport } from './report.mjs';
 
 const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = dirname(COMMON_DIR);
@@ -94,7 +96,7 @@ function runTool({ tool, repo, base, ticket, ticketDir, branch, runDir, fresh })
     const found = context.ticket;
     // Reviewers must not see what is already built, so criterion status is kept out of the files the agents read
     // and saved separately for the report: ticket-report.json.
-    const statuses = (found.acceptanceCriteria ?? []).map(({ id, title, repository, status }) => ({ id, title, repository, status }));
+    const statuses = (found.acceptanceCriteria ?? []).map(({ id, title, description, repository, status }) => ({ id, title, description, repository, status }));
     if (found.acceptanceCriteria) {
       for (const row of found.acceptanceCriteria) delete row.status;
       writeFileSync(file('context'), JSON.stringify(context, null, 2));
@@ -214,10 +216,12 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   return summary;
 }
 
+const USAGE = 'Usage: swag-scan.mjs run [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>] [--agents analyst,inspector,security-guard] [--fresh] [--json]\n       swag-scan.mjs report [--repo <dir>] [--json]';
+
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  if (command !== 'run') throw new PlainError('Usage: swag-scan.mjs run [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>] [--agents analyst,inspector,security-guard] [--fresh] [--json]');
-  const options = {};
+  if (command !== 'run' && command !== 'report') throw new PlainError(USAGE);
+  const options = { command };
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
     const value = () => {
@@ -225,22 +229,39 @@ function parseArgs(argv) {
       return rest[(i += 1)];
     };
     if (arg === '--repo') options.repo = value();
-    else if (arg === '--base') options.base = value();
-    else if (arg === '--ticket') options.ticket = value();
-    else if (arg === '--ticket-dir') options.ticketDir = value();
-    else if (arg === '--agents') options.agents = value().split(',').map((id) => id.trim()).filter(Boolean);
-    else if (arg === '--fresh') options.fresh = true;
     else if (arg === '--json') options.json = true;
+    else if (command === 'run' && arg === '--base') options.base = value();
+    else if (command === 'run' && arg === '--ticket') options.ticket = value();
+    else if (command === 'run' && arg === '--ticket-dir') options.ticketDir = value();
+    else if (command === 'run' && arg === '--agents') options.agents = value().split(',').map((id) => id.trim()).filter(Boolean);
+    else if (command === 'run' && arg === '--fresh') options.fresh = true;
     else throw new PlainError(`Unknown option ${arg}.`);
   }
   return options;
 }
 
+/** Builds the consolidated report from the run folder. Writes report.md and report.json and returns the text. */
+export function reportScan({ repo = process.cwd() } = {}) {
+  const root = git(resolve(repo), ['rev-parse', '--show-toplevel']);
+  if (!root) throw new PlainError(`${resolve(repo)} is not a git repository, so there is no scan to report on.`);
+  try {
+    return writeReport({ runDir: join(root, '.swag-scan', 'run'), repo: root });
+  } catch (error) {
+    throw new PlainError(error.message);
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
-    const { json, ...options } = parseArgs(process.argv.slice(2));
-    const summary = runScan({ ...options, log: (line) => process.stderr.write(`${line}\n`) });
-    process.stdout.write(json ? `${JSON.stringify(summary, null, 2)}\n` : `${summary.text}\n`);
+    const { command, json, ...options } = parseArgs(process.argv.slice(2));
+    if (command === 'run') {
+      const summary = runScan({ ...options, log: (line) => process.stderr.write(`${line}\n`) });
+      process.stdout.write(json ? `${JSON.stringify(summary, null, 2)}\n` : `${summary.text}\n`);
+    } else {
+      const result = reportScan(options);
+      process.stdout.write(json ? `${JSON.stringify(result.report, null, 2)}\n` : result.markdown);
+      process.stderr.write(`Report saved: ${relative(process.cwd(), result.kept.markdown) || result.kept.markdown}\n`);
+    }
   } catch (error) {
     process.stderr.write(`${error instanceof PlainError ? error.message : `Swag Scan could not finish: ${error.message}`}\n`);
     process.exit(1);

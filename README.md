@@ -50,7 +50,7 @@ In Claude Code, skills are namespaced: `/swag-scan:bug-hunter`. Leave off the ba
 /swag-scan:swag-scan [base-ref] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh]
 ```
 
-The command scans with scripts only (no model, no edits), then starts the **Analyst**, **Inspector** and **Security Guard** in parallel for the ones that have leads. Each reports in its own voice. Agents with no leads are skipped, and the report says "no leads", never "clean". You can also ask for them by name, for example `@agent-swag-scan:security-guard`.
+The command scans with scripts only (no model, no edits), then starts the **Analyst**, **Inspector** and **Security Guard** in parallel for the ones that have leads. Each saves its findings (with a line in its own voice), and a script builds one decisions-first report from them with no model tokens: items that need your decision, what was fixed, your ticket's acceptance criteria with their status and linked findings, who looked at what, and coverage. It is saved to `.swag-scan/reports/<commit>/`. Agents with no leads are skipped, and the report says "no leads", never "clean". You can also ask for them by name, for example `@agent-swag-scan:security-guard`.
 
 Fewer permission prompts: add `Bash(swag-scan *)` to your allowed commands. The plugin puts a `swag-scan` command on the Bash path, and every run uses that one shape.
 

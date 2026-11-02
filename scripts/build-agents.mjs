@@ -83,11 +83,11 @@ The scripts have already run. The \`swag-scan\` command scanned this repository 
 1. Read \`.swag-scan/run/summary.json\`. Find your entry (\`id: "${agent.id}"\`): its \`leads\`, \`coverage\`, \`sizeGate\`, \`cache\` and file paths. If \`cache.hit\` is true, say that this commit was already reviewed, point to \`cache.reports\`, and stop. If \`status\` is \`empty\`, say there is nothing to check and stop.
 2. Read \`\${CLAUDE_PLUGIN_ROOT}/skills/${agent.tool}/SKILL.md\`. Follow its review steps (triage, deep review, classification and report format). Skip its script block: those scripts already ran, and \`TOOLS\` is \`\${CLAUDE_PLUGIN_ROOT}/skills\`. The results are in \`.swag-scan/run/${agent.tool}-<name>.json\`: ${RUN_FILES[agent.tool]}. Do not run the collector or the scanners again.${agent.id === 'analyst' ? `
    The Bug Hunter report script takes your findings as JSON. You have no Write tool, so save them with a Bash heredoc to \`.swag-scan/run/findings.json\`, then run \`node \${CLAUDE_PLUGIN_ROOT}/skills/bug-hunter/scripts/write-report.mjs --config \${CLAUDE_PLUGIN_ROOT}/skills/bug-hunter/config.json --input .swag-scan/run/findings.json --scan .swag-scan/run/bug-hunter-scan.json --packets .swag-scan/run/bug-hunter-packets.json\`.` : ''}
-3. Start your report with the coverage line from your entry, and list every file under Unchecked. Never put an unchecked file under Clean, and never call the whole change clean when files are unchecked.
+3. The coverage line and the Unchecked files from your entry are added to the combined report for you. Never put an unchecked file under Clean, and never call the whole change clean when files are unchecked.
 4. If the size gate hit (\`sizeGate.decision\` is \`review-riskiest\`), say what was skipped. You never ask the user questions. If you cannot decide, report the item as suspicious and say what to verify.
 5. ${editing}
 6. Save your findings in the shared format, so one report can combine all three agents. ${SAVE_STEPS[agent.id]} It checks your findings and prints every problem if something is missing; fix those and run it again. Do this even when you found nothing (an empty \`findings\` list).
-7. Return your report and one line naming where the detailed files are. Do not paste raw JSON.
+7. Reply with a short summary in your own voice (two sentences at most) and say that your findings were saved. The combined report is built from your saved findings, so do not repeat them. Do not paste raw JSON.
 
 ## Limits
 

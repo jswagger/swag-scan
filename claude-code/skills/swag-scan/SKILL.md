@@ -28,7 +28,7 @@ Read `.swag-scan/run/summary.json`. For each agent in `agents`:
 - `leads: 0`: the scripts found nothing for this agent, so it does no model review (scripts first, models only where something is flagged). Say so, and still show its coverage line. Say "no leads", never "clean".
 - otherwise: start the agent.
 
-If no agent needs to start, finish here.
+If no agent needs to start, skip step 3 and go straight to step 4: the report still explains why each agent did not run and shows the coverage.
 
 ## 3. Review (the three agents, in parallel)
 
@@ -36,8 +36,14 @@ Start every agent that needs to run at the same time, in one step, using the age
 
 ## 4. Report
 
-Give the user each agent's report under its own name, in the order Analyst, Inspector, Security Guard, in the agent's own voice. Add nothing to the findings and do not merge or re-rank them.
+When every agent that was started has replied, build the combined report:
 
-- Open with the coverage line from the summary and list any ⚪ Unchecked files. Never describe a change as clean when files are unchecked.
-- Keep the voice light: the reports stay easy to scan.
-- End with one next step, such as "Go deeper on the flagged items?". Do not list flags.
+```sh
+swag-scan report
+```
+
+It reads what the agents saved and prints one decisions-first report: what needs the developer's decision (a table with 🔴 Critical, 🟡 Feature gap / design issue and ✅ Cleanup / minor), what was fixed, the ticket's acceptance criteria with their status and linked findings, who looked at what, and coverage. Show it to the user as is. Add nothing to the findings and do not merge, re-rank or soften them.
+
+- If it says an agent did not report, tell the user plainly that the area was not reviewed. Do not start that agent again unless the user asks.
+- The report ends its summary with a next step. Do not add a list of flags.
+- It never says the code is clean. Do not say so either, especially when files are ⚪ Unchecked.

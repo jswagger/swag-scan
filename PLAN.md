@@ -37,13 +37,15 @@ Last updated: 2026-11-02
   entry skill `claude-code/skills/swag-scan/SKILL.md` (`/swag-scan:swag-scan`, registered through the manifest `skills` key); `bin/swag-scan` wrapper;
   `hooks/hooks.json` + `hooks/guard-bash.mjs` (default-deny Bash allowlist for the three agents only, keyed on hook `agent_type`).
   Shared findings format built (`findings.mjs`, `save-findings.mjs`, README "Findings format"): severities critical/design/minor, `disposition`, `flaggedText`, `criteria` links.
-  **Next:** the consolidated report with acceptance-criteria rows (step 7) that reads `findings-*.json` and `ticket-report.json`, then a live Claude Code test.
+  Consolidated report built (step 7): `swag-scan report` -> `report.mjs` renders decisions-first markdown + `report.json` with no model, AC rows with linked
+  findings, honest per-agent states, coverage; keeps a copy in `.swag-scan/reports/<commit>/` and records reviewed agents in the cache.
+  **Next:** a live Claude Code test (parked until you want it), then Phase 3: event log, multi-repo worktrees, dashboard.
   **Unverified until a real session:** that `agent_type` is `swag-scan:analyst` (or bare `analyst`) in hook input, that a skill can start the plugin agents
   by name in parallel, and how the agents behave with the `SKILL.md` instructions.
 - **Phase 3 (package):** event log, multi-repo worktrees, dashboard from `assets/agents/live-view-mockup.html`.
 - **Future, not yet:** every agent (Analyst, Inspector, Security Guard) gets edit capability. Needs safe-fix tooling and a separate-commit flow first.
   Today only the Inspector can edit, and only with auto-fix on.
-- Tests: 212 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
+- Tests: 222 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
 - Update this section at the end of every session, and tick boxes as you go.
 
 ## To do
