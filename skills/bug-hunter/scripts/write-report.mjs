@@ -99,6 +99,7 @@ export function renderMarkdown(report) {
   if (run.baseRef) meta.push(`base \`${run.baseRef}\``);
   if (run.commit) meta.push(`commit \`${run.commit}\``);
   out.push(meta.join(' · '), '');
+  if (run.coverage?.line) out.push(`_${run.coverage.line}_`, '');
   out.push(`**${summary.probableBugs}** probable · **${summary.suspicious}** suspicious · **${summary.clean}** clean areas`, '');
 
   if (run.mode === 'high-risk-only') {
@@ -119,6 +120,10 @@ export function renderMarkdown(report) {
   }
   out.push('');
 
+  if (run.coverage?.unchecked?.length) {
+    out.push(renderSection('⚪ Unchecked', run.coverage.unchecked, (f) => `- \`${f.path}\` (${f.language}): not reviewed, so no verdict either way.`, ''), '');
+  }
+
   out.push(renderSection('🟢 Clean', report.clean, (c) => `- **${singleLine(c.area)}**${c.note ? ` — ${singleLine(c.note)}` : ''}`, 'No specific areas to report.'));
   out.push('');
   return out.join('\n');
@@ -138,6 +143,7 @@ export function buildReportJson(agentReport, { scan, packets, now = new Date() }
       mode: packets?.mode ?? 'full',
       omitted: packets?.omitted ?? [],
       languages: scan?.repository_type ?? [],
+      coverage: scan?.coverage,
     },
     summary: { probableBugs: probable.length, suspicious: suspicious.length, clean: clean.length, dismissed: dismissed.length },
     signals: scan?.signals,

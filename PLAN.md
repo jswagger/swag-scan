@@ -811,3 +811,12 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
 - 2026-10-31 (night, 8): saved the live view mock-up to `assets/agents/live-view-mockup.html` and added ideas for permission prompts and one-screen use to the Live view plan.
 - 2026-10-31 (night, 9): recorded decisions: aim for fewer permission prompts, a "waiting for you" toast or flag is OK in the live page, approving from the page is not planned.
 - 2026-10-31 (night, 10): added the "waiting for you" toast to the live view mock-up (no approval tracking, by design).
+- 2026-11-02: prototype phase 1 (shore up the tools), step 0 audit done on throwaway fixtures. Findings: no-arg runs use base `HEAD`
+  (config says `HEAD`, README says `origin/HEAD`), so a committed branch gives a silent empty diff. The size gate counts changed-line
+  text only, about 46% of the collector's JSON size. `0 excluded files` is correct when nothing matches, but the message is misleading
+  (it also shows 0 when the diff is empty). `--ticket` takes a bare name only; the ticket folder comes from repo config.
+  Step 1 done (uncommitted): collector auto-detects the base (`baseRef: "auto"` in all three configs), reports an empty diff with a
+  suggested ref, and prints a changed/excluded/scanned and bytes-vs-gate summary line; 138 of 138 tests pass.
+  Step 2 done: `review-tools-common/coverage.mjs` gives a per-language coverage line; the collector, all three scanners and the Bug
+  Hunter report carry it, unsupported files show as ⚪ Unchecked, and each SKILL.md says never to list them as Clean.
+  Plan: phase 1 tools (collector fixes, language coverage, non-interactive gate, ticket handling), phase 2 agents and orchestrator, phase 3 event log, multi-repo, dashboard.

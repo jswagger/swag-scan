@@ -7,6 +7,7 @@
 // (a hint: only surface it if the reviewing agent confirms it in context).
 
 import { execFileSync } from 'node:child_process';
+import { renderCoverageLine, summarizeCoverage } from '../../review-tools-common/coverage.mjs';
 import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
 import { isMain, languageForPath, loadConfig, parseArgs, readJsonInput, runCli } from './lib/common.mjs';
 import { groupHunks, isTrivialHunk } from './lib/hunks.mjs';
@@ -88,6 +89,11 @@ function dedupe(findings) {
   });
 }
 
+function coverageFor(files) {
+  const summary = summarizeCoverage(files);
+  return { checked: summary.checked, unchecked: summary.unchecked, line: renderCoverageLine(summary) };
+}
+
 export function scanCollected(collected, config) {
   const { isTestFile } = createFileFilters(config.scan);
   const options = {
@@ -124,6 +130,7 @@ export function scanCollected(collected, config) {
   return {
     schemaVersion: SCHEMA_VERSION,
     repository_type: [...languages].sort(),
+    coverage: coverageFor(collected.files ?? []),
     comparison_base: collected.comparisonBase,
     script_findings: unique,
     summary: { ...summary, findingsByRule: byRule },

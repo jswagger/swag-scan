@@ -66,6 +66,9 @@ When supported, delegate this pass using a subagent's model selector set to your
    ### 🟢 Clean
    Specific changed areas reviewed that appear to follow sound security practices in the available context. Do not imply exhaustive coverage.
 
+   ### ⚪ Unchecked
+   Changed files in a language the tools cannot read (only JavaScript, TypeScript, C# and Python are supported), from `coverage.unchecked`. Begin the report with the `coverage.line` text. Never put an unchecked file under Clean, and never call the change clean overall when files are unchecked.
+
 For each finding, include the rule ID when applicable, file and line, concise evidence, impact, and a concrete remediation. Avoid duplicating the same issue in multiple sections. If a section has no entries, write `None found.` In Clean, list only areas actually reviewed; if none can be responsibly identified, write `No specific areas to report.`
 
 ## Script Usage

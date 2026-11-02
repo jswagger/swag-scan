@@ -60,6 +60,7 @@ Header: the resolved base (hash and date) and whether auto-fix is enabled. Then 
 - **🔴 Unclean:** obvious cleanup items with clear evidence. Auto-fixed by default when safe and enabled.
 - **🟡 Dusty:** plausible cleanup that may be acceptable as-is. Never auto-fix.
 - **🟢 Clean:** specific changed areas you actually reviewed that follow the criteria. Do not imply exhaustive coverage. If none can be responsibly identified, write `No specific areas to report.`
+- **⚪ Unchecked:** changed files in a language the tools cannot read (only JavaScript, TypeScript, C# and Python are supported). List them from `coverage.unchecked`, and begin the report with the `coverage.line` text. Never put an unchecked file under 🟢 Clean, and never say the change is clean overall when files are unchecked.
 
 Each item includes the rule ID (when applicable), file and line, concise evidence, why it matters, and a concrete recommendation. Don't repeat an issue across sections. An empty section reads `None found.`
 

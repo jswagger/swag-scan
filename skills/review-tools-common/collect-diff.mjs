@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
+import { renderCoverageLine, summarizeCoverage } from './coverage.mjs';
 import { createFileFilters } from './file-filters.mjs';
 
 const args = process.argv.slice(2);
@@ -229,6 +230,7 @@ try {
     (sum, file) => sum + file.changes.reduce((fileSum, change) => fileSum + Buffer.byteLength(change.text, 'utf8') + 1, 0),
     0,
   );
+  const coverage = summarizeCoverage(scannedFiles);
   const gateBytes = config.diff.maxDiffBytes;
   const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 
@@ -248,6 +250,7 @@ try {
       + `${excludedCount} excluded ${excludedCount === 1 ? 'file' : 'files'}.\n`
       + `Diff collector: ${changedCount} changed, ${excludedCount} excluded, ${scannedFiles.length} scanned; `
       + `diff ${kb(diffBytes)}${gateBytes ? ` of ${kb(gateBytes)} gate` : ''}.\n`
+      + (coverage.unchecked.length ? `Diff collector: ${renderCoverageLine(coverage).replace(/^Coverage: /, '')}\n` : '')
       + (emptyDiff ? `Diff collector: no changes found against ${baseRef}. ${suggestion}\n` : ''),
   );
 
@@ -263,6 +266,7 @@ try {
     diffBytes,
     emptyDiff,
     suggestion,
+    coverage: { ...coverage, line: renderCoverageLine(coverage) },
     files: scannedFiles,
     skipped: untracked.skipped,
     note: usedFallbackBase

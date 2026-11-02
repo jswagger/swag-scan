@@ -94,6 +94,7 @@ node "$S/build-packets.mjs"    --config "$CFG" --diff "$RUN/diff.json" --scan "$
 - 🔴 **Probable Bugs:** logic that appears to truly cause a regression or bug.
 - 🟡 **Suspicious:** not proven, but likely enough to cause unintended consequences. Over-report here and let the developer decide. The markdown shows the first 15; the JSON keeps all, so order them by likelihood.
 - 🟢 **Clean:** specific changed areas you actually reviewed and found sound. Never imply exhaustive coverage.
+- **⚪ Unchecked:** changed files in a language the tools cannot read (only JavaScript, TypeScript, C# and Python are supported). List them from `coverage.unchecked`, and begin the report with the `coverage.line` text. Never put an unchecked file under 🟢 Clean, and never say the change is clean overall when files are unchecked.
 
 ## Script output reference
 

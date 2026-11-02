@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
+import { renderCoverageLine, summarizeCoverage } from '../../review-tools-common/coverage.mjs';
 import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
 import { findLongJsFunctions } from './function-length.mjs';
 
@@ -643,9 +644,12 @@ for (const file of report.files) {
   }
 }
 
+const coverageSummary = summarizeCoverage(report.files);
+
 process.stdout.write(`${JSON.stringify({
   candidates,
   changedTests,
+  coverage: { checked: coverageSummary.checked, unchecked: coverageSummary.unchecked, line: renderCoverageLine(coverageSummary) },
   skipped: report.skipped ?? [],
   baseRef: report.baseRef,
   requestedBaseRef: report.requestedBaseRef,

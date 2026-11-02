@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
+import { renderCoverageLine, summarizeCoverage } from '../../review-tools-common/coverage.mjs';
 import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
 
 const configPath = new URL('../config.json', import.meta.url);
@@ -359,10 +360,16 @@ const pythonFiles = scannedFiles.filter((file) => file.path.endsWith('.py'));
 const csharpFiles = scannedFiles.filter((file) => languageForPath(file.path) === 'csharp');
 const infrastructureFiles = scannedFiles.filter((file) => infrastructurePathPattern.test(file.path));
 
+const languageCoverage = (() => {
+  const summary = summarizeCoverage(scannedFiles);
+  return { checked: summary.checked, unchecked: summary.unchecked, line: renderCoverageLine(summary) };
+})();
+
 process.stdout.write(`${JSON.stringify({
   candidates,
   skipped: report.skipped ?? [],
   coverage: {
+    ...languageCoverage,
     python: {
       changedFiles: pythonFiles.length,
       note: pythonFiles.length
