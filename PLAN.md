@@ -278,8 +278,16 @@ Open questions (Security Guard):
       ability to run tests and write only reports? What can it never do (push, delete, edit source)?
 - [ ] **Overlap:** Bug Hunter reads acceptance criteria from a ticket today. Where does the line fall between Bug Hunter and
       the acceptance-criteria checker, inside this one agent?
-- [ ] **Per-platform packaging:** verify against current docs how Claude Code plugins define agents (tools, permissions, model)
-      and how Copilot defines custom agents. Keep the persona and focus items in one platform-neutral source, with thin wrappers.
+- [x] **Claude Code packaging, verified 2026-11-02 against code.claude.com docs.** A plugin agent is `agents/<name>.md` (YAML frontmatter, body = system
+      prompt), invoked as `swag-scan:<name>` or `@agent-swag-scan:<name>`. Supported frontmatter: `name`, `description`, `model`, `effort`, `maxTurns`,
+      `tools`, `disallowedTools`, `skills`, `memory`, `background`, `isolation`, `color`. **Ignored for plugin agents: `permissionMode`, `hooks`,
+      `mcpServers`, `initialPrompt`.** `tools` is an allowlist by tool name only; the docs show no `Bash(<pattern>)` form for it, so an agent file cannot
+      pin Bash to the Swag Scan scripts. Finer control needs plugin-level `hooks/hooks.json` (fires session-wide) or the user's allow/deny rules.
+      `${CLAUDE_PLUGIN_ROOT}` is substituted inline in agent and skill Markdown (not in the Bash environment). A plugin `bin/` folder is put on the Bash
+      PATH, so a bare `swag-scan` command is possible. The `agents` manifest key takes `.md` files only. A plugin `settings.json` only honors `agent` and
+      `subagentStatusLine`. `workflows/*.js` (orchestrate several subagents from a script) and `monitors` (background process, output reaches Claude) exist
+      and are worth a look for the dashboard and orchestration. Still unverified: the name format for preloading a plugin skill via `skills:`.
+- [ ] **Copilot custom agents:** deferred with the rest of Copilot and Codex support.
 - [ ] **How agents get invoked:** by name, as a combined "run my Analyst agent" command, or both? Does the agent run its tools in a
       fixed order and produce one combined report?
 - [ ] Other agents to come (for example security, code quality, test quality, tech debt). Which skills go on which belt?
@@ -766,6 +774,9 @@ The HTML loads Google Fonts (Inter and Montserrat) over the network, so render w
 - [ ] Before merging to `main`, decide what stays in `assets/` (PNG only, or the source HTML too).
 
 ## Decisions already made (don't relitigate)
+- **Scope (2026-11-02): Claude Code first.** Build and polish the plugin for Claude Code. Copilot and Codex are a later, nice-to-have. Keep the core
+  agent-neutral so they can be added without a rewrite: scripts and skills in `skills/`, persona text and the findings shape in plain files, and
+  every Claude Code-only piece (agents, `bin/`, hooks, entry command) in its own thin layer that is generated from or points to the neutral sources.
 - Renamed the existing repo to `swag-scan` (no new repo). One source of truth in `skills/`, with thin per-platform wrappers.
 - Targets Claude Code and GitHub Copilot (VS Code) for v0.1.0.
 - Model roles are a per-agent map (`models.claude` / `models.copilot`). `null` means the agent's default model.
