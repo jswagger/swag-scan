@@ -44,6 +44,16 @@ Run it from your project root. Skills land in `.github/skills/`. Use `--target .
 
 In Claude Code, skills are namespaced: `/swag-scan:bug-hunter`. Leave off the base ref to use the configured default branch.
 
+### Run everything at once
+
+One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, it uses no model tokens, and it changes no files:
+
+```bash
+node skills/review-tools-common/swag-scan.mjs run [--base main] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh] [--json]
+```
+
+It prints one progress line per agent, then a short summary: leads per agent, the language coverage line, the ticket it found, and whether a stored review already covers this commit. Leads are script matches, not verified findings. Results are written to `.swag-scan/run/` (replaced every run, gitignored). Because the command is always the same shape, one permission rule covers it.
+
 The scripts also run on their own. Scanners print candidates as JSON and never apply fixes:
 
 ```bash

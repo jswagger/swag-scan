@@ -13,7 +13,10 @@ if (args[0] !== '--config' || !args[1] || args.length > 3) {
 }
 
 const config = JSON.parse(readFileSync(resolve(args[1]), 'utf8'));
-const { isExcluded } = createFileFilters(config.scan);
+const { isExcluded: isConfigExcluded } = createFileFilters(config.scan);
+// The tools' own output (run results, caches, reports) is never part of the change under review.
+const isToolOutput = (path) => /^\.(?:swag-scan|bug-hunter)\//.test(path.replaceAll('\\', '/'));
+const isExcluded = (path) => isToolOutput(path) || isConfigExcluded(path);
 const requestedBaseRef = args[2] ?? config.diff.baseRef ?? 'auto';
 // 'auto' (and the older 'origin/HEAD' default) means: pick the most likely base branch.
 const autoBase = requestedBaseRef === 'auto' || requestedBaseRef === 'origin/HEAD';

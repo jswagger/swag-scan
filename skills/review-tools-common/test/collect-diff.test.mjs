@@ -264,3 +264,17 @@ test('collector skips JS/TS generated artifacts and untracked files with tracked
   assert.match(result.stderr, /3 excluded files/);
   assert(report.skipped.some((file) => file.path === 'src/module.js' && /tracked.*sibling/.test(file.reason)));
 });
+test('the tools\' own output folders are never part of the diff', (context) => {
+  const directory = newRepo(context, 'collect-tool-output-');
+  commitFile(directory, 'base.py', 'value = 1\n');
+  git(directory, ['checkout', '-q', '-b', 'feature/PROJ-5']);
+  mkdirSync(join(directory, '.swag-scan', 'run'), { recursive: true });
+  mkdirSync(join(directory, '.bug-hunter', 'reports'), { recursive: true });
+  writeFileSync(join(directory, '.swag-scan', 'run', 'scan.py'), 'leak = 1\n');
+  writeFileSync(join(directory, '.bug-hunter', 'reports', 'report.py'), 'leak = 2\n');
+  writeFileSync(join(directory, 'real.py'), 'value = 2\n');
+
+  const { report } = collect(directory);
+  assert.deepEqual(report.files.map((file) => file.path), ['real.py']);
+  assert.equal(report.excludedCount, 2);
+});

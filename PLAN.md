@@ -831,4 +831,8 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
   Cache done (Bug Hunter): `review-tools-common/cache.mjs` (`check` and `store`) keys a finished run by HEAD, base commit, config, ticket text and a
   fingerprint of the tool's own scripts; results live in `.swag-scan/cache/` (gitignored); never cached with uncommitted changes. Code Sweeper
   and Security Auditor adopt it through the Phase 2 orchestrator. Phase 1 is complete except the live agent tests (parked).
+  Phase 2 started. Orchestrator step done (uncommitted): `skills/review-tools-common/swag-scan.mjs run` (in `skills/` so it travels with the
+  Copilot install) runs Analyst, Inspector and Security Guard scripts in a fixed order, report-only, 0 model tokens, one progress line per
+  agent, results in `.swag-scan/run/`, plain-sentence errors, cache status per agent. Bug found and fixed on the way: the tools scanned their
+  own output folders; the collector now always ignores `.swag-scan/` and `.bug-hunter/`. 184 of 184 tests pass.
   Plan: phase 1 tools (collector fixes, language coverage, non-interactive gate, ticket handling), phase 2 agents and orchestrator, phase 3 event log, multi-repo, dashboard.
