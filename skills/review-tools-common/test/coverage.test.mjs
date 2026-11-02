@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { renderCoverageLine, summarizeCoverage, supportedLanguage, unsupportedLanguage } from '../coverage.mjs';
+import { isNonCode, renderCoverageLine, summarizeCoverage, supportedLanguage, unsupportedLanguage } from '../coverage.mjs';
 
 const files = (...paths) => paths.map((path) => ({ path, changes: [] }));
 const scanner = (skill) => fileURLToPath(new URL(`../../${skill}/scripts/scan-patterns.mjs`, import.meta.url));
@@ -27,6 +27,19 @@ test('unsupported files are listed as unchecked, never as checked', () => {
     renderCoverageLine(coverage),
     'Coverage: Checked: Python (2 files), TypeScript (1 file) · ⚪ Unchecked: 3 files in Go, Rust (not a supported language, so not reviewed).',
   );
+});
+
+test('data, docs and images are not source code, so they are never Unchecked', () => {
+  assert.equal(isNonCode('data.json'), true);
+  assert.equal(isNonCode('docs/README.md'), true);
+  assert.equal(isNonCode('logo.PNG'), true);
+  assert.equal(isNonCode('main.go'), false);
+  assert.equal(isNonCode('Makefile'), false);
+  const coverage = summarizeCoverage(files('a.py', 'data.json', 'README.md', 'main.go'));
+  assert.deepEqual(coverage.unchecked.map((file) => file.path), ['main.go']);
+  assert.equal(coverage.nonCode, 2);
+  assert.match(renderCoverageLine(coverage), /2 files of data or docs, not code/);
+  assert.doesNotMatch(renderCoverageLine(summarizeCoverage(files('a.py', 'data.json'))), /Unchecked/);
 });
 
 test('a diff with only unsupported files says nothing was checked', () => {

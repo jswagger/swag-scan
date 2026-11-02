@@ -16,6 +16,14 @@ const KNOWN_UNSUPPORTED = {
   fs: 'F#', vb: 'Visual Basic', tf: 'Terraform', proto: 'Protobuf', graphql: 'GraphQL',
 };
 
+// Data, documents and images are not source code, so they are never "Unchecked": there is no code in them to miss.
+const NON_CODE = new Set([
+  'md', 'markdown', 'txt', 'rst', 'json', 'yaml', 'yml', 'toml', 'xml', 'csv', 'tsv', 'ini', 'cfg', 'conf', 'lock',
+  'svg', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'webp', 'pdf', 'snap', 'map', 'log', 'env', 'gitignore',
+]);
+
+export const isNonCode = (path) => NON_CODE.has(path.slice(path.lastIndexOf('/') + 1).split('.').slice(1).pop()?.toLowerCase() ?? '');
+
 export function supportedLanguage(path) {
   return SUPPORTED.find(([, pattern]) => pattern.test(path))?.[0];
 }
@@ -32,12 +40,14 @@ export function unsupportedLanguage(path) {
 export function summarizeCoverage(files = []) {
   const checked = {};
   const unchecked = [];
+  let nonCode = 0;
   for (const file of files) {
     const language = supportedLanguage(file.path);
     if (language) checked[language] = (checked[language] ?? 0) + 1;
+    else if (isNonCode(file.path)) nonCode += 1;
     else unchecked.push({ path: file.path, language: unsupportedLanguage(file.path) });
   }
-  return { checked, unchecked, fileCount: files.length };
+  return { checked, unchecked, nonCode, fileCount: files.length };
 }
 
 const plural = (count) => `${count} ${count === 1 ? 'file' : 'files'}`;
@@ -53,5 +63,6 @@ export function renderCoverageLine(coverage) {
     const languages = [...new Set(coverage.unchecked.map((file) => file.language))].sort();
     parts.push(`⚪ Unchecked: ${plural(coverage.unchecked.length)} in ${languages.join(', ')} (not a supported language, so not reviewed)`);
   }
+  if (coverage.nonCode) parts.push(`${plural(coverage.nonCode)} of data or docs, not code`);
   return `Coverage: ${parts.join(' · ')}.`;
 }
