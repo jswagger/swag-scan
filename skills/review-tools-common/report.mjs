@@ -8,6 +8,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { storeCache } from './cache.mjs';
+import { emit } from './events.mjs';
 import { SEVERITIES } from './findings.mjs';
 
 export const REPORT_SCHEMA = 1;
@@ -212,5 +213,6 @@ export function writeReport({ runDir, repo, now = new Date() }) {
       cached.push(agent.id);
     }
   }
+  emit(runDir, { kind: 'run-done', phase: 'report', count: report.counts.needsDecision });
   return { report, markdown, files, kept, cached };
 }

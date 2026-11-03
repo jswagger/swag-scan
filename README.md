@@ -76,6 +76,27 @@ Other fields: `title`, `rule`, `file` and `line` (the line in the new version of
 
 Ticket criterion status (todo, done, future) is saved separately in `.swag-scan/run/ticket-report.json` for the report, and kept out of the files the agents read, because what is already built would bias a review.
 
+### Event log
+
+While a scan runs, scripts append one JSON line per event to `.swag-scan/run/events.jsonl`. A dashboard, a status line or any other tool can read it. It costs no model tokens, never blocks or fails a scan (writes are best effort), and holds no code and no finding text. `SWAG_SCAN_EVENTS=off` turns it off.
+
+```json
+{"v":1,"t":"2026-11-02T12:00:01.250Z","agent":"analyst","kind":"progress","phase":"scan","step":4,"steps":6,"label":"scan"}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `v`, `t` | Format version (1) and the time (ISO, UTC). |
+| `agent` | `analyst`, `inspector`, `security-guard`, or `swag-scan` for the run itself. |
+| `kind` | `run-started`, `started`, `progress`, `finding`, `saved`, `done`, `waiting`, `error`, `run-done`. |
+| `phase` | `scan` (scripts), `review` (an agent judging its leads) or `report`. |
+| `step`, `steps` | Real counts such as "step 4 of 6". Never a percentage. |
+| `label` | A short fixed word, such as `collect`, `scan`, `callers`, `packets`. |
+| `count`, `total` | A number that goes with the kind: leads found, findings saved, items needing a decision. |
+| `id`, `severity`, `file` | On `finding` only: the finding id, its severity and its file name. |
+
+Scripts write the scan, finding and report events. In Claude Code, an asynchronous hook also records `started` and `done` for each agent's review, and `waiting` when a permission prompt appears. That hook only writes while a Swag Scan run is active in the project, and it only nudges: it does not track whether the prompt was approved.
+
 ### Run everything at once
 
 One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, it uses no model tokens, and it changes no files:

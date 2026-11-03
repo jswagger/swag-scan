@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { emit } from './events.mjs';
 import { buildFindingsReport, fromBugHunter } from './findings.mjs';
 
 function parseArgs(argv) {
@@ -54,6 +55,11 @@ export function saveFindings({ agent, text, format = 'native', runDir, now = new
   mkdirSync(runDir, { recursive: true });
   const path = join(runDir, `findings-${agent}.json`);
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
+  // Only the id, severity and file name go in the event log, never the finding text.
+  for (const finding of report.findings) {
+    emit(runDir, { kind: 'finding', agent, phase: 'review', id: finding.id, severity: finding.severity, file: finding.locations[0]?.file });
+  }
+  emit(runDir, { kind: 'saved', agent, phase: 'review', count: report.findings.length });
   return { path, counts: report.counts, findings: report.findings.length };
 }
 

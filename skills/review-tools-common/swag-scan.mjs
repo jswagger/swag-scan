@@ -14,6 +14,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkCache } from './cache.mjs';
+import { emit } from './events.mjs';
 import { writeReport } from './report.mjs';
 
 const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
@@ -59,7 +60,7 @@ const plural = (count, word, many = `${word}s`) => `${count} ${count === 1 ? wor
 const seconds = (ms) => `${(ms / 1000).toFixed(1)}s`;
 
 /** Runs one tool's script pipeline for a repo. Returns what the summary needs; writes each step's JSON to `runDir`. */
-function runTool({ tool, repo, base, ticket, ticketDir, branch, runDir, fresh }) {
+function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir, fresh }) {
   const skill = join(SKILLS_DIR, tool);
   const config = join(skill, 'config.json');
   const scripts = join(skill, 'scripts');
@@ -67,9 +68,14 @@ function runTool({ tool, repo, base, ticket, ticketDir, branch, runDir, fresh })
   const save = (name, text) => { writeFileSync(file(name), text); return file(name); };
   const read = (name) => JSON.parse(readFileSync(file(name), 'utf8'));
   const result = { tool, files: {} };
+  // One event per finished script, as "step n of m": real counts, never a percentage.
+  const totalSteps = tool === 'bug-hunter' ? 6 : 2;
+  let stepNumber = 0;
+  const progress = (label) => emit(runDir, { kind: 'progress', agent: agentId, phase: 'scan', step: (stepNumber += 1), steps: totalSteps, label });
 
   const diffText = node(join(COMMON_DIR, 'collect-diff.mjs'), ['--config', config, ...(base ? [base] : [])], { cwd: repo });
   result.files.diff = save('diff', diffText);
+  progress('collect');
   const diff = JSON.parse(diffText);
   Object.assign(result, {
     baseRef: diff.baseRef,
@@ -87,6 +93,7 @@ function runTool({ tool, repo, base, ticket, ticketDir, branch, runDir, fresh })
   if (tool === 'bug-hunter') {
     const size = JSON.parse(node(join(scripts, 'check-diff-size.mjs'), ['--config', config, '--diff', result.files.diff, '--non-interactive']));
     result.sizeGate = { decision: size.decision, bytes: size.bytes, limit: size.limit, notice: size.notice };
+    progress('size-gate');
     contextPath = save('context', node(join(scripts, 'gather-context.mjs'), [
       '--config', config, '--diff', result.files.diff, ...(branch ? ['--branch', branch] : []),
       ...(ticket ? ['--ticket', ticket] : []), ...(ticketDir ? ['--ticket-dir', ticketDir] : []),
@@ -105,6 +112,7 @@ function runTool({ tool, repo, base, ticket, ticketDir, branch, runDir, fresh })
       result.files.ticketReport = join(runDir, 'ticket-report.json');
       writeFileSync(result.files.ticketReport, `${JSON.stringify({ id: found.ticketName, source: found.source, title: found.title, criteria: statuses, repositories: found.repositories ?? [] }, null, 2)}\n`);
     }
+    progress('ticket');
     result.ticket = {
       found: found.found,
       ...(found.ticketName ? { id: found.ticketName } : {}),
@@ -116,11 +124,14 @@ function runTool({ tool, repo, base, ticket, ticketDir, branch, runDir, fresh })
     };
 
     result.files.scan = save('scan', node(join(scripts, 'scan-patterns.mjs'), ['--config', config, '--diff', result.files.diff], { cwd: repo }));
+    progress('scan');
     result.files.callers = save('callers', node(join(scripts, 'find-callers.mjs'), ['--config', config, '--diff', result.files.diff, '--scan', result.files.scan], { cwd: repo }));
+    progress('callers');
     result.files.packets = save('packets', node(join(scripts, 'build-packets.mjs'), [
       '--config', config, '--diff', result.files.diff, '--scan', result.files.scan, '--callers', result.files.callers,
       '--non-interactive', ...(size.decision === 'review-riskiest' ? ['--budget-bytes', String(size.budgetBytes)] : []),
     ], { cwd: repo }));
+    progress('packets');
     const scan = read('scan');
     result.leads = scan.script_findings.length;
     result.coverage = scan.coverage ?? result.coverage;
@@ -130,6 +141,7 @@ function runTool({ tool, repo, base, ticket, ticketDir, branch, runDir, fresh })
     // Code Sweeper and Security Auditor read the collector JSON on stdin. Code Sweeper never edits here (--no-fix).
     const args = tool === 'code-sweeper' ? ['--no-fix'] : [];
     result.files.scan = save('scan', node(join(scripts, 'scan-patterns.mjs'), args, { cwd: repo, input: diffText }));
+    progress('scan');
     const scan = read('scan');
     result.leads = scan.candidates.length;
     result.coverage = scan.coverage ?? result.coverage;
@@ -187,12 +199,21 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   if (!head) throw new PlainError('This repository has no commits yet, so there is nothing to scan.');
 
   log(`Running: ${crew.map((agent) => agent.name).join(', ')} · scripts only, report-only, no model tokens`);
+  emit(runDir, { kind: 'run-started', phase: 'scan', steps: crew.length, label: 'scan' });
   const results = [];
   for (const [index, agent] of crew.entries()) {
     const toolStart = now();
-    const result = runTool({ tool: agent.tool, repo: root, base, ticket, ticketDir, branch, runDir, fresh });
+    emit(runDir, { kind: 'started', agent: agent.id, phase: 'scan', step: index + 1, steps: crew.length });
+    let result;
+    try {
+      result = runTool({ tool: agent.tool, agentId: agent.id, repo: root, base, ticket, ticketDir, branch, runDir, fresh });
+    } catch (error) {
+      emit(runDir, { kind: 'error', agent: agent.id, phase: 'scan', label: error instanceof PlainError ? error.message : 'scan failed' });
+      throw error;
+    }
     const entry = { ...agent, ...result, durationMs: now() - toolStart };
     results.push(entry);
+    emit(runDir, { kind: 'done', agent: agent.id, phase: 'scan', count: entry.leads, label: entry.status === 'empty' ? 'no changes' : undefined });
     log(`[${index + 1}/${crew.length}] ${agent.name} · ${TOOL_TITLES[agent.tool]}: ${entry.status === 'empty' ? 'no changes' : plural(entry.leads, 'lead')} (${seconds(entry.durationMs)})`);
   }
 
@@ -213,6 +234,7 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   };
   summary.text = renderSummary(summary);
   writeFileSync(join(runDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  emit(runDir, { kind: 'done', phase: 'scan', count: results.reduce((sum, entry) => sum + (entry.leads ?? 0), 0), steps: crew.length });
   return summary;
 }
 

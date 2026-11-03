@@ -42,10 +42,14 @@ Last updated: 2026-11-02
   **Next:** a live Claude Code test (parked until you want it), then Phase 3: event log, multi-repo worktrees, dashboard.
   **Unverified until a real session:** that `agent_type` is `swag-scan:analyst` (or bare `analyst`) in hook input, that a skill can start the plugin agents
   by name in parallel, and how the agents behave with the `SKILL.md` instructions.
-- **Phase 3 (package):** event log, multi-repo worktrees, dashboard from `assets/agents/live-view-mockup.html`.
+- **Phase 3 (package):** event log is built (`events.mjs`, `hooks/events.mjs`, README "Event log"; subagent start/stop and permission prompts come from
+  async hooks, verified in the hooks docs). **Next:** multi-repo worktree runs, then the dashboard from `assets/agents/live-view-mockup.html`.
+  **Decision (2026-11-02): where repositories live is a per-user answer, asked during setup** ("In what folder do all of your repositories live?"), saved in
+  the user-level settings file (`~/.swag-scan/settings.json`, key such as `repoRoots`). A ticket's `## Repositories` names are resolved against those folders.
+  Add it to the setup wizard's questions (Installation and onboarding) as an optional, multi-repo-only question.
 - **Future, not yet:** every agent (Analyst, Inspector, Security Guard) gets edit capability. Needs safe-fix tooling and a separate-commit flow first.
   Today only the Inspector can edit, and only with auto-fix on.
-- Tests: 222 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
+- Tests: 234 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
 - Update this section at the end of every session, and tick boxes as you go.
 
 ## To do
@@ -407,7 +411,8 @@ first result as painlessly as possible.
 
 Asked only if needed, never by default:
 - **Test command**, only when it can't be detected. Show what was found and ask yes or no.
-- **Which repos**, only for a multi-repo run. Let the user paste paths or point to a folder to scan.
+- **Which repos**, only for a multi-repo run. Ask once, "In what folder do all of your repositories live?" (more than one folder allowed), and save it in the
+  user-level settings (`repoRoots`). A ticket's repository names are then found under those folders. Paths can still be pasted for one-off runs.
 
 **Setup wizard (idea):** shape first-run setup like an old-fashioned installation wizard, the starting point when someone first
 installs or downloads Swag Scan. It walks them through every choice they need up front, in a simple, intuitive order.
