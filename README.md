@@ -97,6 +97,19 @@ While a scan runs, scripts append one JSON line per event to `.swag-scan/run/eve
 
 Scripts write the scan, finding and report events. In Claude Code, an asynchronous hook also records `started` and `done` for each agent's review, and `waiting` when a permission prompt appears. That hook only writes while a Swag Scan run is active in the project, and it only nudges: it does not track whether the prompt was approved.
 
+### Live view (dashboard)
+
+A page that shows the crew at work while a scan runs: the five steps, counts, each agent's face with its latest line, a newest-first timeline, and a "waiting for you" note when a permission prompt appears. It is built by a script from the event log, so it costs no model tokens, and the lines are fixed templates, not model output. It never opens by itself unless you ask.
+
+```bash
+node skills/review-tools-common/swag-scan.mjs dashboard [--watch] [--open]
+```
+
+- Writes `.swag-scan/dashboard.html` (self-contained: no network, no external fonts or scripts) and prints its path. With no scan yet it shows "Waiting for a scan".
+- `--watch` keeps the page's data fresh until the scan ends (start it before `run`, or while one is running). The page picks up changes without reloading, and says "Not updating" if the watcher stops.
+- `--open` opens the page in your browser. In Claude Code, `/swag-scan:swag-scan --live` starts the watcher and opens the page for you.
+- The page shows only what events carry: agent, step counts, file names and finding ids. It never tracks whether you approved a prompt.
+
 ### Run everything at once
 
 One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, it uses no model tokens, and it changes no files:

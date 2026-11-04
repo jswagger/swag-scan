@@ -27,7 +27,7 @@
 
 ## Resume here
 
-Last updated: 2026-11-02
+Last updated: 2026-11-04
 
 - **Scope:** Claude Code first (see Decisions). Copilot and Codex later, through the neutral core.
 - **Prototype, Phase 1 (tools) is done:** base auto-detect, empty-diff message, language coverage (⚪ Unchecked), unattended size gate, large changes
@@ -43,13 +43,21 @@ Last updated: 2026-11-02
   **Unverified until a real session:** that `agent_type` is `swag-scan:analyst` (or bare `analyst`) in hook input, that a skill can start the plugin agents
   by name in parallel, and how the agents behave with the `SKILL.md` instructions.
 - **Phase 3 (package):** event log is built (`events.mjs`, `hooks/events.mjs`, README "Event log"; subagent start/stop and permission prompts come from
-  async hooks, verified in the hooks docs). **Next:** multi-repo worktree runs, then the dashboard from `assets/agents/live-view-mockup.html`.
+  async hooks, verified in the hooks docs). **Dashboard prototype built (2026-11-04, uncommitted):** `skills/review-tools-common/dashboard.mjs` (pure `buildState` from the event log,
+  page writer, watcher) + `dashboard-page.html` (the mock-up's look, offline, light and dark) -> `.swag-scan/dashboard.html`. Command:
+  `swag-scan dashboard [--watch] [--open]`; `/swag-scan:swag-scan --live` starts it (SKILL.md step 0, **unverified in a real session**).
+  The page keeps its state and refreshes by re-loading `dashboard-data.js` (no page reload, so toasts survive). Shows waiting, live, finished,
+  error and "not updating" states, fixed per-agent lines, "waiting for you" toast (live runs only). Screenshot-checked in headless Chrome.
+  **Approved as a first draft (2026-11-04).** Finished banner is green with an "Open the full report" button. **Color rule (decided):** green means the scan
+  itself completed, whatever it found (critical findings included); orange means the scan process failed (not the user's code). Do not tie green to "clean".
+  **Known gap:** the button opens `report.md`, which Safari shows as unrendered Markdown. Fine for now; later render the report as HTML or do something else.
+  **Next:** multi-repo worktree runs (the dashboard will need a per-repo view).
   **Decision (2026-11-02): where repositories live is a per-user answer, asked during setup** ("In what folder do all of your repositories live?"), saved in
   the user-level settings file (`~/.swag-scan/settings.json`, key such as `repoRoots`). A ticket's `## Repositories` names are resolved against those folders.
   Add it to the setup wizard's questions (Installation and onboarding) as an optional, multi-repo-only question.
 - **Future, not yet:** every agent (Analyst, Inspector, Security Guard) gets edit capability. Needs safe-fix tooling and a separate-commit flow first.
   Today only the Inspector can edit, and only with auto-fix on.
-- Tests: 234 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
+- Tests: 243 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
 - Update this section at the end of every session, and tick boxes as you go.
 
 ## To do
@@ -865,3 +873,9 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
   agent, results in `.swag-scan/run/`, plain-sentence errors, cache status per agent. Bug found and fixed on the way: the tools scanned their
   own output folders; the collector now always ignores `.swag-scan/` and `.bug-hunter/`. 184 of 184 tests pass.
   Plan: phase 1 tools (collector fixes, language coverage, non-interactive gate, ticket handling), phase 2 agents and orchestrator, phase 3 event log, multi-repo, dashboard.
+- 2026-11-04: dashboard prototype (live view page). Built from the event log by a script, no model. Choices: data file re-loaded by the page instead of
+  meta refresh (toasts survive); page and data live in `.swag-scan/` (not `run/`, which a new run wipes); the watcher ignores a finished run left over from
+  before it started; `--live` is opt-in and never auto-opens. Differences from the mock-up: real steps (Read the diff, Scripts scan, Agents review,
+  Findings saved, Report); stats are files scanned, leads, findings, need-your-call, elapsed ("Fixed for you" dropped: first run is report-only);
+  no per-file "checked n of 12" because scripts report steps, not files; no replay controls; system fonts (no Google Fonts, offline rule). 8 new tests.
+- 2026-11-04 (later): finished banner restyled and the prototype approved (see Resume here for the color rule and the Markdown-in-Safari gap). 243 tests pass.

@@ -1,13 +1,23 @@
 ---
 name: swag-scan
 description: Run Swag Scan, the pre-pull-request review of the current branch by the Analyst, Inspector and Security Guard. Use when asked to run Swag Scan, review a branch before a pull request, or check changes for bugs, code quality and security.
-argument-hint: '[base-ref] [--ticket ID] [--agents analyst,inspector,security-guard] [--fresh]'
+argument-hint: '[base-ref] [--ticket ID] [--agents analyst,inspector,security-guard] [--fresh] [--live]'
 allowed-tools: Bash(swag-scan *)
 ---
 
 # Swag Scan
 
 Run the whole review for the current branch. Do not ask the user anything: use the arguments given, and defaults for the rest. The first run changes no files.
+
+## 0. Live view (only if the user passed `--live`)
+
+Before anything else, start the live view in the background (do not wait for it) and remove `--live` from the arguments for the rest of this skill. Without `--live`, never start it and never open a browser:
+
+```sh
+swag-scan dashboard --watch --open
+```
+
+It opens a page that shows the crew at work and stops by itself when the scan ends. It costs no model tokens. If it fails to start, say so in one sentence and carry on: the scan does not depend on it.
 
 ## 1. Scan (scripts only, no model)
 

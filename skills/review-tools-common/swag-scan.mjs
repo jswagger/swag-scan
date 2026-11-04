@@ -5,16 +5,18 @@
 // Usage: swag-scan.mjs run [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>]
 //                          [--agents analyst,inspector,security-guard] [--fresh] [--json]
 //        swag-scan.mjs report [--repo <dir>] [--json]     (after the agents have saved their findings)
+//        swag-scan.mjs dashboard [--repo <dir>] [--watch] [--open]   (the live view page: .swag-scan/dashboard.html)
 //
 // Results go to <repo>/.swag-scan/run/ (gitignored, replaced on every run): one JSON file per step and summary.json.
 // Exit code 0 means the scan ran (even if it found nothing); 1 means it could not run, with one plain sentence why.
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkCache } from './cache.mjs';
 import { emit } from './events.mjs';
+import { watchDashboard, writeDashboard } from './dashboard.mjs';
 import { writeReport } from './report.mjs';
 
 const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
@@ -238,11 +240,11 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   return summary;
 }
 
-const USAGE = 'Usage: swag-scan.mjs run [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>] [--agents analyst,inspector,security-guard] [--fresh] [--json]\n       swag-scan.mjs report [--repo <dir>] [--json]';
+const USAGE = 'Usage: swag-scan.mjs run [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>] [--agents analyst,inspector,security-guard] [--fresh] [--json]\n       swag-scan.mjs report [--repo <dir>] [--json]\n       swag-scan.mjs dashboard [--repo <dir>] [--watch] [--open]';
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  if (command !== 'run' && command !== 'report') throw new PlainError(USAGE);
+  if (!['run', 'report', 'dashboard'].includes(command)) throw new PlainError(USAGE);
   const options = { command };
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
@@ -252,6 +254,8 @@ function parseArgs(argv) {
     };
     if (arg === '--repo') options.repo = value();
     else if (arg === '--json') options.json = true;
+    else if (command === 'dashboard' && arg === '--watch') options.watch = true;
+    else if (command === 'dashboard' && arg === '--open') options.open = true;
     else if (command === 'run' && arg === '--base') options.base = value();
     else if (command === 'run' && arg === '--ticket') options.ticket = value();
     else if (command === 'run' && arg === '--ticket-dir') options.ticketDir = value();
@@ -273,12 +277,38 @@ export function reportScan({ repo = process.cwd() } = {}) {
   }
 }
 
+/** Opens a file in the default browser. Only ever called when the user passed --open. */
+function openInBrowser(path) {
+  const [command, args] = process.platform === 'darwin' ? ['open', [path]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', path]] : ['xdg-open', [path]];
+  try {
+    spawn(command, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+  } catch {
+    // The path is printed either way.
+  }
+}
+
+/** Writes the live view page. With `watch`, keeps its data fresh until the run ends. Returns the page path and final state. */
+export async function dashboardScan({ repo = process.cwd(), watch = false, open = false, log = () => {} } = {}) {
+  const root = git(resolve(repo), ['rev-parse', '--show-toplevel']);
+  if (!root) throw new PlainError(`${resolve(repo)} is not a git repository, so there is no scan to show.`);
+  const swagDir = join(root, '.swag-scan');
+  const { page, state } = writeDashboard({ swagDir });
+  log(`Live view: ${page}`);
+  if (open) openInBrowser(page);
+  if (!watch) return { page, state };
+  log(state.status === 'live' ? 'Watching the scan. This stops when it finishes.' : 'Watching for the next scan. Press Ctrl-C to stop.');
+  return { page, state: await watchDashboard({ swagDir }) };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const { command, json, ...options } = parseArgs(process.argv.slice(2));
     if (command === 'run') {
       const summary = runScan({ ...options, log: (line) => process.stderr.write(`${line}\n`) });
       process.stdout.write(json ? `${JSON.stringify(summary, null, 2)}\n` : `${summary.text}\n`);
+    } else if (command === 'dashboard') {
+      const { page, state } = await dashboardScan({ ...options, log: (line) => process.stderr.write(`${line}\n`) });
+      process.stdout.write(json ? `${JSON.stringify(state, null, 2)}\n` : `${page}\n`);
     } else {
       const result = reportScan(options);
       process.stdout.write(json ? `${JSON.stringify(result.report, null, 2)}\n` : result.markdown);
