@@ -6,6 +6,7 @@
 ## Contents
 
 - [Resume here](#resume-here)
+- [Try it on another machine](#try-it-on-another-machine-temporary-no-plugin-install)
 - [To do](#to-do) (before push, live agent tests, push and PR, after merge, cleanup)
 - [Backlog](#backlog-later-not-blocking-the-pr)
 - [Vision / roadmap](#vision--roadmap-placeholders-nothing-here-is-built-yet) (nothing here is built yet)
@@ -59,6 +60,21 @@ Last updated: 2026-11-04
   Today only the Inspector can edit, and only with auto-fix on.
 - Tests: 243 pass. Regenerate agents with `node scripts/build-agents.mjs` (a test fails if they are stale).
 - Update this section at the end of every session, and tick boxes as you go.
+
+## Try it on another machine (temporary, no plugin install)
+
+The plugin is not installed anywhere; Claude Code loads it straight from a folder for one session with `--plugin-dir`. Nothing is installed or changed on that machine.
+
+1. **Once:** `git clone https://github.com/jswagger/swag-scan.git ~/swag-scan && cd ~/swag-scan && git checkout plugin-restructure`. Needs Node 22 or 24 and the `claude` CLI on the PATH.
+   Later, `git pull` in that folder gets new work.
+2. **Optional shortcut** (zsh): `alias claude-swag='claude --plugin-dir ~/swag-scan'`.
+3. **Per ticket, if the ticket is a file** (see README "Ticket files"): put the folder that holds `PROJ-123.md` into `~/.swag-scan/settings.json` as
+   `{"ticketFolder": "/path/to/tickets"}`, or pass `--ticket-dir` / `--ticket <path>`. With no ticket the Analyst still runs, without acceptance criteria.
+4. **Run:** `cd` into the *other* repo, check out the ticket's branch (committed, ahead of its base), then start `claude --plugin-dir ~/swag-scan`
+   (or `claude-swag`) and type `/swag-scan:swag-scan` (add a base such as `main`, `--ticket PROJ-123`, or `--live` for the dashboard page).
+5. **What to watch for (the unverified list):** the three agents start in parallel and follow SKILL.md; the Bash guard does not block the scripts they
+   need (a block shows its reason); a permission toast appears on the dashboard when a prompt does; the report at the end is decisions-first.
+   Copy any error text or odd behavior back here. Results are in `<repo>/.swag-scan/` (gitignored); the first run changes no files.
 
 ## To do
 
