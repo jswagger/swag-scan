@@ -193,9 +193,14 @@ export function buildPackets(collected, scanReport, callersReport, { contextLine
   const included = [];
   const omitted = [];
   let used = 0;
+  // The size gate measures the diff, but packets also carry context and callers, so they are several times bigger. The
+  // budget is scaled to match: a diff 6% over its limit drops about 6% of the packets, not most of them.
+  const packetBytes = packets.reduce((sum, packet) => sum + sizeOf(packet), 0);
+  const packetsPerDiffByte = collected.diffBytes > 0 ? Math.max(1, packetBytes / collected.diffBytes) : 1;
+  const budget = budgetBytes ? Math.ceil(budgetBytes * packetsPerDiffByte) : undefined;
   for (const packet of packets) {
     const size = sizeOf(packet);
-    if (budgetBytes && used + size > budgetBytes && included.length > 0) {
+    if (budget && used + size > budget && included.length > 0) {
       omitted.push({ id: packet.id, file: packet.file, range: packet.range, riskScore: packet.risk.score });
     } else {
       included.push(packet);
@@ -207,7 +212,7 @@ export function buildPackets(collected, scanReport, callersReport, { contextLine
     schemaVersion: 1,
     comparison_base: collected.comparisonBase,
     mode: omitted.length > 0 ? 'high-risk-only' : 'full',
-    budget: { bytes: budgetBytes ?? null, used, packetsIncluded: included.length, packetsOmitted: omitted.length, unattended },
+    budget: { bytes: budgetBytes ?? null, packetBytes: budget ?? null, used, packetsIncluded: included.length, packetsOmitted: omitted.length, unattended },
     signals: scanReport.signals,
     packets: included,
     omitted,

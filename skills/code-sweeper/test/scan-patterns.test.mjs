@@ -27,7 +27,7 @@ test('Python tests and complexity patterns include top-level tests and long func
   const lines = ['def long_task():', ...Array.from({ length: 51 }, (_, index) => `    value_${index} = ${index}`)];
   writeFileSync(path, lines.join('\n'));
   const report = scan([
-    { path, changes: [{ side: 'added', line: 2, text: lines[1] }] },
+    { path, changes: [{ side: 'added', line: 1, text: lines[0] }, { side: 'added', line: 2, text: lines[1] }] }, // a new long function
     {
       path: 'test/test_api.py',
       changes: [
@@ -370,4 +370,47 @@ test('SWEEP-112 flags a changed JS function over maxFunctionLines but not one ex
   const flagged = report.candidates.filter((candidate) => candidate.ruleId === 'SWEEP-112');
   assert.deepEqual(flagged.map(({ line, severity }) => ({ line, severity })), [{ line: 1, severity: 'dusty' }]);
   assert.match(flagged[0].description, /tooLong has 51 nonblank body lines/);
+});
+
+test('a small edit inside a long existing function is not flagged, a new or heavily changed one is (SWEEP-106)', (context) => {
+  const directory = mkdtempSync(join(tmpdir(), 'code-sweeper-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const path = join(directory, 'long.py');
+  const lines = ['def long_task():', ...Array.from({ length: 60 }, (_, index) => `    value_${index} = ${index}`)];
+  writeFileSync(path, lines.join('\n'));
+  const ruleIds = (changes) => scan([{ path, changes }]).candidates.filter((candidate) => candidate.path === path).map((candidate) => candidate.ruleId);
+  const added = (from, to) => Array.from({ length: to - from + 1 }, (_, index) => ({ side: 'added', line: from + index, text: lines[from + index - 1] }));
+  assert.deepEqual(ruleIds(added(5, 7)), [], 'three lines changed in an old 60-line function');
+  assert(ruleIds(added(5, 30)).includes('SWEEP-106'), '26 lines changed');
+});
+
+test('SWEEP-107 ignores import and export renames, and marks any as only a type argument as lower priority', () => {
+  const report = scan([{
+    path: 'src/app.ts',
+    changes: [
+      { side: 'added', line: 1, text: "import * as helpers from './helpers';" },
+      { side: 'added', line: 2, text: "import { Thing as Other } from './thing';" },
+      { side: 'added', line: 3, text: "export { Thing as Renamed } from './thing';" },
+      { side: 'added', line: 4, text: 'const data = JSON.parse(text) as any;' },
+      { side: 'added', line: 5, text: 'const bag: Record<string, any> = {};' },
+    ],
+  }]);
+  const found = report.candidates.filter((candidate) => candidate.ruleId === 'SWEEP-107');
+  assert.deepEqual(found.map((candidate) => candidate.path + ':' + candidate.line), ['src/app.ts:4', 'src/app.ts:5']);
+  assert.equal(found[0].priority, undefined, 'as any stays a normal lead');
+  assert.equal(found[1].signal, 'any-type-argument');
+  assert.equal(found[1].priority, 'lower');
+});
+
+test('SWEEP-111 flags new files, files that just crossed the limit, or real growth, not a one-line edit to a big file', (context) => {
+  const directory = mkdtempSync(join(tmpdir(), 'code-sweeper-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const big = join(directory, 'big.ts');
+  writeFileSync(big, Array.from({ length: 900 }, (_, index) => `const v${index} = ${index};`).join('\n'));
+  const change = (count) => Array.from({ length: count }, (_, index) => ({ side: 'added', line: 900 - count + index + 1, text: 'x' }));
+  const flagged = (file) => scan([file]).candidates.some((candidate) => candidate.ruleId === 'SWEEP-111');
+  assert.equal(flagged({ path: big, changes: change(2) }), false, 'a 900-line file that grew by 2');
+  assert.equal(flagged({ path: big, changes: change(60) }), true, 'grew by 60');
+  assert.equal(flagged({ path: big, status: 'added', changes: change(2) }), true, 'a new file');
+  assert.equal(flagged({ path: big, changes: change(2).concat(Array.from({ length: 398 }, (_, index) => ({ side: 'added', line: index + 1, text: 'x' }))) }), true, 'crossed 500 lines in this change');
 });

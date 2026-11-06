@@ -226,8 +226,15 @@ function removedCleanup(hunk, language) {
     'Cleanup was removed (unsubscribe, dispose, close, cancel, or a using/with scope). Check for leaked listeners, timers, connections, or handles.'));
 }
 
-function removedEarlyExit(hunk) {
-  return netRemovedMatches(hunk, EARLY_EXIT).map((line) => ({
+/** True when the same line (ignoring whitespace) was added elsewhere in the file at least as often as it was removed: code that moved. */
+function exitReappearsInFile(removedLine, fileChanges) {
+  const key = normalizeCode(removedLine.text);
+  const count = (side) => fileChanges.filter((change) => change.side === side && normalizeCode(change.text) === key).length;
+  return count('added') >= count('removed');
+}
+
+function removedEarlyExit(hunk, fileChanges = []) {
+  return netRemovedMatches(hunk, EARLY_EXIT).filter((line) => !exitReappearsInFile(line, fileChanges)).map((line) => ({
     ...removedFinding(hunk, line, 'REMOVED_EARLY_EXIT', 'LOW',
       'A return/throw/raise/continue/break was removed, so execution may now fall through to code that used to be skipped.'),
     confidence: 'low',
@@ -419,7 +426,7 @@ export function analyzeHunk(hunk, { language, isTest, fileChanges = [] }) {
   ].filter(unpaired);
   // The early-exit hint is the broadest rule, so it only reports lines no other rule claimed.
   const claimedLines = new Set([...pairedRemovedLines, ...specific.map((finding) => finding.removedLine)]);
-  const earlyExits = removedEarlyExit(hunk).filter((finding) => !claimedLines.has(finding.removedLine));
+  const earlyExits = removedEarlyExit(hunk, fileChanges).filter((finding) => !claimedLines.has(finding.removedLine));
   return [
     ...specific,
     ...removedTestAssertion(hunk, isTest),

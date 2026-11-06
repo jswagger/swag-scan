@@ -308,12 +308,17 @@ function addTestCandidates(file) {
   }
 }
 
+/** Big files that only grew a little were already big: flag new files, files that just crossed the limit, or real growth. */
+function fileGrewEnough(file, totalLines, growth, limit) {
+  return file.status === 'added' || totalLines - growth <= limit || growth >= (thresholds.minFileGrowthLines ?? 50);
+}
+
 function addJsFunctionCandidates(file) {
   const addedLines = new Set((file.changes ?? [])
     .filter((change) => change.side === 'added')
     .map((change) => change.line));
   const limit = thresholds.maxFunctionLines ?? 50;
-  for (const fn of findLongJsFunctions(getSourceLines(file), addedLines, limit)) {
+  for (const fn of findLongJsFunctions(getSourceLines(file), addedLines, limit, thresholds.minFunctionChangeLines ?? 20)) {
     addCandidate({
       ruleId: 'SWEEP-112',
       severity: 'dusty',
@@ -357,7 +362,9 @@ function addPythonFunctionCandidates(file) {
 
     const bodyLines = sourceLines.slice(index + 1, endIndex)
       .filter((line) => line.trim() && !line.trimStart().startsWith('#'));
-    const changedFunction = [...addedLines].some((line) => line > index && line <= endIndex);
+    const addedInside = [...addedLines].filter((line) => line > index && line <= endIndex).length;
+    // Same rule as SWEEP-112: a function that already existed is reported only when much of it changed.
+    const changedFunction = addedLines.has(index + 1) || addedInside >= (thresholds.minFunctionChangeLines ?? 20);
     if (changedFunction && bodyLines.length > (thresholds.maxFunctionLines ?? 50)) {
       addCandidate({
         ruleId: 'SWEEP-106',
@@ -403,9 +410,13 @@ for (const file of report.files) {
     for (const change of added) {
       const text = change.text.trim();
       if (commentPattern.test(change.text)) continue;
+      // "import * as x" and "import { A as B }" rename things; they are not type assertions.
+      if (/^(?:import\b|export\s+(?:type\s+)?(?:\*|\{[^}]*\})\s*(?:as\b|from\b|$))/.test(text)) continue;
       const anyType = /\bas\s+any\b|:\s*any\b|<\s*any\b|,\s*any\s*[>,]/.test(text);
       const assertion = /\bas\s+[A-Za-z_$][\w$.[\]<>|&?]*/.test(text);
       if (!anyType && !assertion) continue;
+      // "any" only as a type argument (Record<string, any>) is common and milder than ": any" or "as any".
+      const anyTypeArgumentOnly = anyType && !/\bas\s+any\b|:\s*any\b/.test(text);
       const typeLoosening = anyType && weakensTypeArgument(file, change.text);
       addCandidate({
         ruleId: 'SWEEP-107',
@@ -414,6 +425,7 @@ for (const file of report.files) {
         line: change.line,
         ...(typeLoosening ? { signal: 'specific-type-replaced-with-any' } : {}),
         ...(!anyType && assertion ? { signal: 'type-assertion', priority: 'lower' } : {}),
+        ...(anyTypeArgumentOnly && !typeLoosening ? { signal: 'any-type-argument', priority: 'lower' } : {}),
         description: typeLoosening
           ? 'Changed a specific generic type argument to any, weakening type safety'
           : anyType
@@ -488,7 +500,8 @@ for (const file of report.files) {
   const fileLineLimit = thresholds.maxFileLines ?? 500;
   if (/\.(?:[cm]?[jt]sx?|py|java|cs|go|rs|rb|php)$/i.test(file.path)
     && sourceLines.length > fileLineLimit
-    && addedCount > removedCount) {
+    && addedCount > removedCount
+    && fileGrewEnough(file, sourceLines.length, addedCount - removedCount, fileLineLimit)) {
     addCandidate({
       ruleId: 'SWEEP-111',
       severity: 'dusty',

@@ -177,6 +177,16 @@ test('testdata fixtures are excluded without hiding source JSON policies', () =>
   assert.equal(report.candidates.some((candidate) => candidate.path.startsWith('testdata/')), false);
   assert(report.candidates.some((candidate) => candidate.path === 'policies/access.json'));
 });
+
+test('locale and translation JSON is treated as data, so placeholder text is not read as a security lead', () => {
+  const report = scan([
+    { path: 'src/locales/en/common.json', changes: [{ side: 'added', line: 1, text: 'verify=False' }] },
+    { path: 'src/i18n/de.json', changes: [{ side: 'added', line: 1, text: 'verify=False' }] },
+    { path: 'src/config/local-policy.json', changes: [{ side: 'added', line: 1, text: 'Action = "*"' }] },
+  ]);
+  assert.equal(report.candidates.some((candidate) => /locales|i18n/.test(candidate.path)), false);
+  assert(report.candidates.some((candidate) => candidate.path === 'src/config/local-policy.json'), 'other JSON is still scanned');
+});
 test('CRIT-102 flags replace-based character blacklisting but not ordinary string cleanup', () => {
   const lines = [
     "const a = input.replace(/<script>/gi, '');",

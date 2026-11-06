@@ -107,17 +107,25 @@ function matchFunctionStart(text, lineIndex) {
   return { name: method[1], start: { line: lineIndex, col: text.lastIndexOf('{') } };
 }
 
-function changedWithin(addedLines, firstLine, lastLine) {
-  return [...addedLines].some((line) => line >= firstLine && line <= lastLine);
+/** A function counts as changed when its first line is new, or at least `minChanged` of its lines were added. */
+function changedWithin(addedLines, firstLine, lastLine, minChanged = 1) {
+  if (addedLines.has(firstLine)) return true;
+  let count = 0;
+  for (const line of addedLines) {
+    if (line >= firstLine && line <= lastLine) count += 1;
+    if (count >= minChanged) return true;
+  }
+  return false;
 }
 
 /**
  * @param {string[]} lines      Source lines of the changed file.
  * @param {Set<number>} addedLines  One-based line numbers added in this diff.
+ * @param {number} [minChanged]  A function that already existed is reported only when this many of its lines were added.
  * @param {number} maxLines     Longest allowed body, in nonblank non-comment lines.
  * @returns {{ name: string, line: number, bodyLines: number, signature: string }[]}
  */
-export function findLongJsFunctions(lines, addedLines, maxLines) {
+export function findLongJsFunctions(lines, addedLines, maxLines, minChanged = 1) {
   const found = [];
   lines.forEach((text, lineIndex) => {
     const match = matchFunctionStart(text, lineIndex);
@@ -126,7 +134,7 @@ export function findLongJsFunctions(lines, addedLines, maxLines) {
     const endLine = open && findBlockEnd(lines, open);
     if (endLine === null || endLine === undefined) return;
     const bodyLines = countBodyLines(lines, open, endLine);
-    if (bodyLines <= maxLines || !changedWithin(addedLines, lineIndex + 1, endLine + 1)) return;
+    if (bodyLines <= maxLines || !changedWithin(addedLines, lineIndex + 1, endLine + 1, minChanged)) return;
     found.push({ name: match.name, line: lineIndex + 1, bodyLines, signature: text.trim() });
   });
   return found;

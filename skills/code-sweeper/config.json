@@ -38,7 +38,9 @@
 			"maxCommentLength": 160,
 			"maxFunctionLines": 50,
 			"maxBooleanOperators": 3,
-			"maxFileLines": 500
+			"maxFileLines": 500,
+			"minFileGrowthLines": 50,
+			"minFunctionChangeLines": 20
 		}
 	},
 	"autoFix": {

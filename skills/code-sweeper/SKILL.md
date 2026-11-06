@@ -22,7 +22,7 @@ Read [config.json](./config.json) first.
 - `tests.removeLowValue` (default `false`): when `false`, only suggest test removals. When `true`, remove a test only if its lack of long-term value is clear from the test and its directly related behavior. Never delete a test because of a scanner match alone.
 - `scan.exclude`: patterns omitted during collection and scanning. Defaults cover generated JS/TS artifacts and common prose and data files (`.txt`, `.json`, CSV, XML, YAML, TOML, databases). Adjust them when those files are part of the review.
 - `scan.testFiles.patterns`: paths treated as tests for the test-value review.
-- `scan.thresholds`: review heuristics, not hard style rules.
+- `scan.thresholds`: review heuristics, not hard style rules. A long function that already existed is reported only when `minFunctionChangeLines` (default 20) of its lines were added or its first line is new, and a long file only when it is new, just crossed `maxFileLines`, or grew by `minFileGrowthLines` (default 50). This keeps pre-existing size out of the way of the change under review.
 
 ## Procedure
 

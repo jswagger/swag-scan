@@ -280,6 +280,13 @@ test('REMOVED_EARLY_EXIT is quiet when exits are rewritten, and does not duplica
   assert.deepEqual(rulesOf(findings), ['REMOVED_GUARD']);
 });
 
+test('REMOVED_EARLY_EXIT ignores an exit that was moved elsewhere in the same file', () => {
+  const hunk = [removed(4, '  if (items.length === 0) return null;'), added(4, '  process(items);')];
+  assert.deepEqual(rulesOf(analyze(hunk)), ['REMOVED_EARLY_EXIT'], 'with nothing re-added it still fires');
+  const moved = analyze([...hunk, added(40, 'function check(items) {'), added(41, '  if (items.length===0) return null;'), added(42, '}')]);
+  assert.deepEqual(rulesOf(moved), [], 'the same exit now lives in a helper');
+});
+
 // --- contract changes ------------------------------------------------------------------------
 
 test('SIGNATURE_CHANGED flags a sync to async flip as contract-breaking', () => {

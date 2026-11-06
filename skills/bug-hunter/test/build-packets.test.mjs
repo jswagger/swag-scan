@@ -8,9 +8,9 @@ const file = (path, changes, status = 'modified') => ({ path, status, changes })
 const isTestFile = (path) => /\.test\./.test(path);
 const numbered = (count) => Array.from({ length: count }, (_, i) => `line${i + 1}`);
 
-function build(files, { findings = [], callers, sources = {}, contextLines = 2, budgetBytes } = {}) {
+function build(files, { findings = [], callers, sources = {}, contextLines = 2, budgetBytes, diffBytes } = {}) {
   return buildPackets(
-    { comparisonBase: 'abc', files },
+    { comparisonBase: 'abc', files, ...(diffBytes ? { diffBytes } : {}) },
     { script_findings: findings, signals: { logicChangedWithoutTests: false } },
     callers,
     { contextLines, isTestFile, readLines: (path) => sources[path], budgetBytes },
@@ -158,4 +158,19 @@ test('a split change still respects the byte budget and lists omitted parts', ()
   assert.equal(result.omitted.length, 1);
   assert.equal(result.omitted[0].file, 'new.js');
   assert.deepEqual(result.omitted[0].range, { start: MAX_HUNK_LINES + 1, end: total });
+});
+
+test('the budget is a share of the diff, so a diff slightly over its limit loses only a little', () => {
+  const sources = {};
+  const files = Array.from({ length: 20 }, (_, index) => {
+    sources[`f${index}.js`] = numbered(30);
+    return file(`f${index}.js`, [added(5, 'x'), added(6, 'y')]);
+  });
+  const diffBytes = files.length * 10; // each file adds two short lines
+  // Without the collector's diffBytes the budget is taken as packet bytes: nearly everything is dropped.
+  const literal = build(files, { sources, budgetBytes: diffBytes - Math.ceil(diffBytes * 0.06) });
+  assert(literal.omitted.length > 10, `literal budget dropped ${literal.omitted.length}`);
+  // With it, a 6% overshoot drops about 6% of the packets.
+  const scaled = build(files, { sources, budgetBytes: diffBytes - Math.ceil(diffBytes * 0.06), diffBytes });
+  assert(scaled.omitted.length >= 1 && scaled.omitted.length <= 3, `scaled budget dropped ${scaled.omitted.length}`);
 });
