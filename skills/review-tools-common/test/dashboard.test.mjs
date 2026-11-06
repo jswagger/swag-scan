@@ -133,3 +133,24 @@ test('a finished run links to its report only when the report exists; an error n
   assert.equal(writeDashboard({ swagDir }).state.result.href, 'run/report.md');
   assert.match(readFileSync(join(swagDir, 'dashboard.html'), 'utf8'), /Open the full report/);
 });
+
+test('a failed write does not end the watcher: it keeps trying and finishes when the run does', async (context) => {
+  const swagDir = join(folder(context), '.swag-scan');
+  const runDir = join(swagDir, 'run');
+  mkdirSync(runDir, { recursive: true });
+  // A non-empty folder where the data file belongs makes every write fail, like a file the OS will not replace.
+  const blocker = join(swagDir, DATA_FILE);
+  mkdirSync(blocker, { recursive: true });
+  writeFileSync(join(blocker, 'keep'), 'x');
+  const watching = watchDashboard({ swagDir, intervalMs: 20 });
+  let settled = false;
+  watching.then(() => { settled = true; });
+  emit(runDir, { kind: 'run-started' });
+  emit(runDir, { kind: 'run-done', phase: 'report', count: 2 });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(settled, false, 'writes are failing, so the watcher keeps waiting instead of crashing');
+  rmSync(blocker, { recursive: true, force: true });
+  const final = await watching;
+  assert.equal(final.status, 'done');
+  assert.match(readFileSync(join(swagDir, DATA_FILE), 'utf8'), /SWAG_SCAN_DATA/);
+});

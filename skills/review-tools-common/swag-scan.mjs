@@ -12,12 +12,13 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkCache } from './cache.mjs';
 import { emit } from './events.mjs';
 import { watchDashboard, writeDashboard } from './dashboard.mjs';
 import { writeReport } from './report.mjs';
+import { scopeCriteria } from './ticket.mjs';
 
 const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = dirname(COMMON_DIR);
@@ -108,7 +109,8 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
     const found = context.ticket;
     // Reviewers must not see what is already built, so criterion status is kept out of the files the agents read
     // and saved separately for the report: ticket-report.json.
-    const statuses = (found.acceptanceCriteria ?? []).map(({ id, title, description, repository, status }) => ({ id, title, description, repository, status }));
+    // Criteria for other repositories stay in the report, marked as such, but findings are never linked to them.
+    const statuses = scopeCriteria(found.acceptanceCriteria ?? [], basename(repo)).map(({ id, title, description, repository, status, otherRepo }) => ({ id, title, description, repository, status, otherRepo }));
     if (found.acceptanceCriteria) {
       for (const row of found.acceptanceCriteria) delete row.status;
       writeFileSync(file('context'), JSON.stringify(context, null, 2));
@@ -123,7 +125,8 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
       ...(found.ticketName ? { id: found.ticketName } : {}),
       ...(found.source ? { source: found.source } : {}),
       criteria: statuses.length,
-      criteriaIds: statuses.map((row) => String(row.id)),
+      criteriaIds: statuses.filter((row) => !row.otherRepo).map((row) => String(row.id)),
+      otherRepoCriteria: statuses.filter((row) => row.otherRepo).length,
       repositories: found.repositories ?? [],
       notes: found.notes ?? [],
     };

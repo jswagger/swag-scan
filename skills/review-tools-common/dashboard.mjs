@@ -7,7 +7,7 @@
 // re-loads dashboard-data.js next to it, which a page opened from disk is allowed to do (it may not fetch files).
 // It never contains code or finding text: only the short fields that events carry.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RUN, readEvents } from './events.mjs';
@@ -248,10 +248,26 @@ function readSummary(runDir) {
   }
 }
 
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/**
+ * Replaces a file in one step. On Windows the rename fails (EPERM, EBUSY, EACCES) while a browser has the target open, so it
+ * is retried briefly and then replaced in place instead. The page re-reads the data file, so a plain overwrite is fine.
+ */
 function writeAtomic(path, text) {
   const temp = `${path}.${process.pid}.tmp`;
   writeFileSync(temp, text);
-  renameSync(temp, path);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      renameSync(temp, path);
+      return;
+    } catch (error) {
+      if (!['EPERM', 'EBUSY', 'EACCES'].includes(error.code)) throw error;
+      sleep(40);
+    }
+  }
+  writeFileSync(path, text);
+  rmSync(temp, { force: true });
 }
 
 /**
@@ -283,7 +299,14 @@ export function watchDashboard({ swagDir, intervalMs = 1500, maxIdleMs = 30 * 60
     const before = buildState(readEvents(join(swagDir, 'run')), undefined);
     const isLeftover = (state) => (before.status === 'done' || before.status === 'error') && state.startedAt === before.startedAt && state.endedAt === before.endedAt;
     const tick = () => {
-      const { state } = writeDashboard({ swagDir, pageOnly: true });
+      let state;
+      try {
+        ({ state } = writeDashboard({ swagDir, pageOnly: true }));
+      } catch {
+        // A failed write must never end the watcher: the page shows "not updating" and the next tick tries again.
+        setTimeout(tick, intervalMs);
+        return;
+      }
       onWrite?.(state);
       const count = state.feed.length + state.waiting.length;
       if (count !== lastCount) {
@@ -292,7 +315,11 @@ export function watchDashboard({ swagDir, intervalMs = 1500, maxIdleMs = 30 * 60
       }
       if ((state.status === 'done' || state.status === 'error') && !isLeftover(state)) {
         // One last full write so the page on disk is a complete snapshot that works without the data file.
-        resolveWatch(writeDashboard({ swagDir }).state);
+        try {
+          resolveWatch(writeDashboard({ swagDir }).state);
+        } catch {
+          resolveWatch(state); // the page on disk is only one snapshot behind
+        }
         return;
       }
       if (Date.now() - lastSeen > maxIdleMs) {
@@ -302,7 +329,11 @@ export function watchDashboard({ swagDir, intervalMs = 1500, maxIdleMs = 30 * 60
       setTimeout(tick, intervalMs);
     };
     // The first write is a full page, so the file exists before the user opens it.
-    writeDashboard({ swagDir });
+    try {
+      writeDashboard({ swagDir });
+    } catch {
+      // Same rule as in tick: a failed write is retried, never fatal.
+    }
     setTimeout(tick, intervalMs);
   });
 }

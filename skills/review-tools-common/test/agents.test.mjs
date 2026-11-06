@@ -27,7 +27,7 @@ const agents = buildAgents().map((entry, index) => ({ ...entry, agent: AGENTS[in
 test('the committed agent files match what the generator produces', () => {
   for (const { path, content } of agents) {
     assert(existsSync(join(ROOT, path)), `${path} is missing. Run: node scripts/build-agents.mjs`);
-    assert.equal(readFileSync(join(ROOT, path), 'utf8'), content, `${path} is out of date. Run: node scripts/build-agents.mjs`);
+    assert.equal(readFileSync(join(ROOT, path), 'utf8').replaceAll('\r\n', '\n'), content, `${path} is out of date. Run: node scripts/build-agents.mjs`);
   }
   assert.equal(spawnSync(process.execPath, [join(ROOT, 'scripts', 'build-agents.mjs'), '--check'], { encoding: 'utf8' }).status, 0);
 });

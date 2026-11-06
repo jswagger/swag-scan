@@ -86,12 +86,12 @@ Verdict: agents' judgment is the strongest part, the scripts-only layer is the n
 | 1 | 🔴 | Bash guard ate backslashes in Windows paths (`C:\tools\x`) | 1 | Fixed in `hooks/guard-bash.mjs` (+1 test). Windows re-run still needed to confirm |
 | 2 | 🔴 | Analyst's report went to `<repo>/.bug-hunter/reports` | 24, 29 | Fixed: Analyst passes `--out .swag-scan/run/bug-hunter-reports` (source: `scripts/build-agents.mjs`) |
 | 3 | 🔴 | Untracked files flooded the scan (691 vs 3) | 28, 32 | Fixed: warning + "N in branch diff, M untracked" line; `testdata/`, `fixtures/`, `__snapshots__/` skipped for untracked files (+2 tests) |
-| 4 | 🟡 | Wrong base is silent (90 files vs 9) | 12 | Todo |
-| 5 | 🟡 | Ticket parsing: two tables merged, ids clash, other repos' criteria linked | 21, 22, 30 | Todo |
-| 6 | 🟡 | Dashboard watcher dies on EPERM rename; stays LIVE and clock runs when idle | 15, 18-20 | Todo |
+| 4 | 🟡 | Wrong base is silent (90 files vs 9) | 12 | Fixed: collector warns when another base makes the change 3x+ smaller (20+ fewer files). Reading the base from the ticket not done (chosen: warn only) |
+| 5 | 🟡 | Ticket parsing: two tables merged, ids clash, other repos' criteria linked | 21, 22, 30 | Fixed: each table parsed on its own; criteria scoped to the scanned repo (folder name match, no filter if none match); report shows "Other repo, not scanned" and "(all)" |
+| 6 | 🟡 | Dashboard watcher dies on EPERM rename; stays LIVE and clock runs when idle | 15, 18-20 | Fixed 18-20: rename retried then overwritten, a failed write never ends the watcher, stale page freezes its clock and says how long ago. Finding 15 (idle state with no agents) not done |
 | 7 | 🟡 | Scanner noise: SWEEP-107/111/112, REMOVED_EARLY_EXIT, locale JSON, size gate | 4, 7-10, 13 | Todo |
 | 8 | 🟡 | `report.md` opens as raw text; write `report.html` | 25, 26 | Todo |
-| 9 | 🟡 | Small bugs: `ticket.id` shows path, `_development.md` lookup, Windows test portability (CRLF, POSIX paths) | 2, 3, 5, 6 | Todo |
+| 9 | 🟡 | Small bugs: `ticket.id` shows path, `_development.md` lookup, Windows test portability (CRLF, POSIX paths) | 2, 3, 5, 6 | Fixed 2, 3, 5 (`.gitattributes` pins LF; tests tolerant). 6 does not reproduce: the underscore name matches, exact name wins |
 | 10 | 🟡 | Docs: Windows/VS Code CLI not on PATH, PowerShell vs cmd launch, "first run in a new repo" checklist | env notes, 31 | Todo |
 | 11 | ✅ | Later: multi-repo mode; scanner rule for relaxed guards + mocked helpers | 34, 35 | Backlog |
 
@@ -915,3 +915,4 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
   no per-file "checked n of 12" because scripts report steps, not files; no replay controls; system fonts (no Google Fonts, offline rule). 8 new tests.
 - 2026-11-04 (later): finished banner restyled and the prototype approved (see Resume here for the color rule and the Markdown-in-Safari gap). 243 tests pass.
 - 2026-11-06: trial-run feedback arrived (Windows; TypeScript/React and Python repos). Added the "Trial-run feedback" table under To do. Fixed the three criticals: guard keeps Windows backslashes (lexer follows real bash rules inside double quotes, keeps `C:\` paths), Analyst report routed into `.swag-scan/`, untracked-file flood warning + fixture folders skipped. Full suite 246 passing on macOS; the Windows guard fix still needs a Windows re-run. Saved Jeremy's `Memory.md` working preferences to memory.
+- 2026-11-06 (later): fixed items 4, 5, 6 and 9 of the trial-run table (base-ref warning, ticket tables parsed separately and scoped to the repo, dashboard watcher survives write errors, `ticket.id` shows the name, `.gitattributes`). 251 tests pass on macOS. Still Todo: 7 (scanner noise), 8 (`report.html`), 10 (docs), and the idle state of Finding 15.

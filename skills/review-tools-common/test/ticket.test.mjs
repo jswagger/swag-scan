@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { gatherTicketContext } from '../../bug-hunter/scripts/gather-context.mjs';
 import {
-  findTicketFile, parseCriteria, parseRepositories, parseTicket, resolveTicketFolder, ticketIdFromBranch,
+  findTicketFile, parseCriteria, parseRepositories, parseTicket, resolveTicketFolder, scopeCriteria, ticketIdFromBranch,
 } from '../ticket.mjs';
 
 const TICKET = `# PROJ-123: Add login
@@ -51,7 +51,7 @@ test('the ticket ID comes from Jira-style keys in the branch name', () => {
 test('the ticket folder follows flag, environment, user settings, then repo config, with no default', () => {
   const userSettings = { ticketFolder: '/user/tickets' };
   const env = { SWAG_SCAN_TICKET_DIR: '/env/tickets' };
-  assert.equal(resolveTicketFolder({ flag: '/flag', env, userSettings, repoPath: '/repo' }).path, '/flag');
+  assert.equal(resolveTicketFolder({ flag: '/flag', env, userSettings, repoPath: '/repo' }).path, resolve('/flag')); // resolve() adds a drive letter on Windows
   assert.equal(resolveTicketFolder({ env, userSettings, repoPath: '/repo' }).source, 'SWAG_SCAN_TICKET_DIR');
   assert.equal(resolveTicketFolder({ env: {}, userSettings, repoPath: '/repo' }).source, 'user settings');
   assert.equal(resolveTicketFolder({ env: {}, userSettings: {}, repoPath: '/repo' }).source, 'repo config');
@@ -191,4 +191,21 @@ test('the CLI reads the ticket folder from the environment and the ID from the b
   assert.equal(ticket.found, true);
   assert.equal(ticket.source, 'branch name');
   assert.match(ticket.content, /AC 2 Token/);
+});
+
+test('two criteria tables are parsed separately, and criteria for other repositories are scoped out', () => {
+  const lines = [
+    '| # | Title |', '| --- | --- |', '| 1 | First requirement |', '| 2 | Second requirement |',
+    '', 'Tracking per repository:', '',
+    '| # | Title | Repository | Status |', '| --- | --- | --- | --- |',
+    '| 1a | Panel shows filter | ui-app | Todo |', '| 1b | Import sets type | backend-api | Todo |',
+  ];
+  const criteria = parseCriteria(lines);
+  assert.deepEqual(criteria.map((row) => row.id), ['1', '2', '1a', '1b'], 'the second table header is not read as a row');
+  assert.equal(criteria.find((row) => row.id === '1a').repository, 'ui-app');
+
+  const scoped = scopeCriteria(criteria, 'ui-app');
+  assert.deepEqual(scoped.filter((row) => row.otherRepo).map((row) => row.id), ['1b']);
+  assert.equal(scoped.find((row) => row.id === '1').otherRepo, false, 'a criterion with no repository applies everywhere');
+  assert.equal(scopeCriteria(criteria, 'something-else').some((row) => row.otherRepo), false, 'nothing is filtered when no criterion names this repository');
 });

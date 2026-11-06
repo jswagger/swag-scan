@@ -160,10 +160,11 @@ export function renderMarkdown(report) {
     out.push(`| # | Title | ${showRepo ? 'Repository | ' : ''}Status | Findings |`, `| --- | --- | ${showRepo ? '--- | ' : ''}--- | --- |`);
     const severityOf = new Map([...report.decisions, ...report.fixed, ...report.wouldFix].map((f) => [f.id, f.severity]));
     for (const row of report.criteria) {
-      const linked = row.findingIds.length ? row.findingIds.map((id) => `${id} ${SEVERITIES[severityOf.get(id)].icon}`).join(', ') : 'None linked';
-      out.push(`| ${row.id} | ${cell(row.title || row.description || '')} | ${showRepo ? `${cell(row.repository ?? '')} | ` : ''}${STATUS_ICONS[row.status] ?? STATUS_ICONS.Todo} | ${linked} |`);
+      const linked = row.otherRepo ? 'Other repo, not scanned'
+        : row.findingIds.length ? row.findingIds.map((id) => `${id} ${SEVERITIES[severityOf.get(id)].icon}`).join(', ') : 'None linked';
+      out.push(`| ${row.id} | ${cell(row.title || row.description || '')} | ${showRepo ? `${cell(row.repository ?? '(all)')} | ` : ''}${STATUS_ICONS[row.status] ?? STATUS_ICONS.Todo} | ${linked} |`);
     }
-    out.push('', `_Status comes from the ticket.${report.criteria.some((row) => !row.findingIds.length) ? ' "None linked" means no agent tied a finding to that row, not that the row is verified.' : ''}_`, '');
+    out.push('', `_Status comes from the ticket.${report.criteria.some((row) => !row.otherRepo && !row.findingIds.length) ? ' "None linked" means no agent tied a finding to that row, not that the row is verified.' : ''}_`, '');
   }
 
   out.push('## Who looked at what', '', '| Agent | Result |', '| --- | --- |', ...report.agents.map((agent) => `| ${agent.name} | ${cell(agent.text)} |`), '');

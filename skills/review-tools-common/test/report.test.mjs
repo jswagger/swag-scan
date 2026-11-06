@@ -215,3 +215,14 @@ test('the report command: markdown on stdout, a plain error without a scan, JSON
   assert.equal(json.schemaVersion, 1);
   assert.equal(spawnSync(process.execPath, [cli, 'report', '--fresh'], { encoding: 'utf8' }).status, 1);
 });
+
+test('criteria for other repositories read "Other repo", not "None linked", and blank repositories read "(all)"', () => {
+  const ticket = { id: 'PROJ-1', criteria: [
+    { id: '1', title: 'Everywhere', status: 'Todo' },
+    { id: '2', title: 'Mine', repository: 'web', status: 'Todo' },
+    { id: '3', title: 'Not mine', repository: 'api', status: 'Todo', otherRepo: true },
+  ] };
+  const markdown = renderMarkdown(buildReport({ summary: summary([agent(0)]), findings: {}, ticket }, { now: NOW }));
+  assert.match(markdown, /\| 1 \| Everywhere \| \(all\) \| 🔲 Todo \| None linked \|/);
+  assert.match(markdown, /\| 3 \| Not mine \| api \| 🔲 Todo \| Other repo, not scanned \|/);
+});

@@ -1,0 +1,4 @@
+# Keep line endings the same on every machine, so generated files and tests behave the same on Windows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary

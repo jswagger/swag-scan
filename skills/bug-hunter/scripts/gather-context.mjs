@@ -11,7 +11,7 @@
 // Repository context searches from each changed file's folder up to the repository root.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { findTicketFile, looksLikePath, parseTicket, resolveTicketFolder, ticketIdFromBranch } from '../../review-tools-common/ticket.mjs';
 import { isMain, loadConfig, parseArgs, readJsonInput, runCli } from './lib/common.mjs';
@@ -118,7 +118,9 @@ export function gatherTicketContext(settings, ticketOverride, options = {}) {
     if (ticketName) source = 'branch name';
   }
 
-  const nothing = (notes) => ({ enabled: Boolean(settings || folder), found: false, ...(ticketName ? { ticketName } : {}), notes });
+  // Given a path (--ticket C:\\tickets\\PROJ-123.md), the ticket is still called PROJ-123 in the summary and report.
+  const shownName = ticketName && looksLikePath(ticketName) ? basename(ticketName.replaceAll('\\', '/'), extname(ticketName)) : ticketName;
+  const nothing = (notes) => ({ enabled: Boolean(settings || folder), found: false, ...(ticketName ? { ticketName: shownName } : {}), notes });
   if (!ticketName) {
     // Quiet when the feature is not set up at all; helpful when a folder is configured but no ID could be found.
     return nothing(settings || folder ? ['No ticket given and no ticket ID (like PROJ-123) found in the branch name.'] : []);
@@ -147,7 +149,7 @@ export function gatherTicketContext(settings, ticketOverride, options = {}) {
   return {
     enabled: true,
     found: true,
-    ticketName,
+    ticketName: shownName,
     source,
     path,
     title: parsed.title,

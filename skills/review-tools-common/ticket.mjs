@@ -143,21 +143,34 @@ export function normalizeStatus(value = '') {
   return 'Todo';
 }
 
+/** Splits lines into runs of table rows. Each table has its own header, so two tables are never read as one. */
+function tableBlocks(lines) {
+  const blocks = [];
+  let current;
+  for (const line of lines) {
+    if (line.trim().startsWith('|')) {
+      if (!current) blocks.push((current = []));
+      current.push(line);
+    } else if (line.trim()) current = undefined; // text between tables ends a table; blank lines do not
+  }
+  return blocks;
+}
+
 /** Table rows (any column order, any subset of columns), else bullets, numbered items and checkboxes. */
 export function parseCriteria(lines) {
-  const table = tableRows(lines);
-  if (table) {
-    const columns = columnMap(table.header);
-    if (columns.title !== undefined || columns.description !== undefined) {
-      return table.body.map((row, index) => ({
-        id: row[columns.id] || String(index + 1),
-        title: row[columns.title] ?? '',
-        description: row[columns.description] ?? '',
-        repository: row[columns.repository] || undefined,
-        status: columns.status !== undefined ? normalizeStatus(row[columns.status]) : 'Todo',
-      }));
-    }
-  }
+  const fromTables = tableBlocks(lines).flatMap((block) => {
+    const table = tableRows(block);
+    const columns = table && columnMap(table.header);
+    if (!columns || (columns.title === undefined && columns.description === undefined)) return [];
+    return table.body.map((row, index) => ({
+      id: row[columns.id] || String(index + 1),
+      title: row[columns.title] ?? '',
+      description: row[columns.description] ?? '',
+      repository: row[columns.repository] || undefined,
+      status: columns.status !== undefined ? normalizeStatus(row[columns.status]) : 'Todo',
+    }));
+  });
+  if (fromTables.length) return fromTables;
   const items = [];
   for (const line of lines) {
     const match = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?(.+)$/.exec(line);
@@ -210,6 +223,22 @@ export function parseRepositories(lines) {
     repositories.push(entry);
   }
   return repositories;
+}
+
+const simplify = (name = '') => name.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Splits criteria into those for the repository being scanned and those for other repositories. A criterion with no
+ * repository applies everywhere. When no criterion names this repository, nothing is filtered: we cannot tell which are ours.
+ */
+export function scopeCriteria(criteria, repoName) {
+  const mine = simplify(repoName);
+  const matches = (row) => {
+    const theirs = simplify(row.repository);
+    return Boolean(mine && theirs && (theirs.includes(mine) || mine.includes(theirs)));
+  };
+  const nameThisRepo = criteria.some((row) => row.repository && matches(row));
+  return criteria.map((row) => ({ ...row, otherRepo: Boolean(nameThisRepo && row.repository && !matches(row)) }));
 }
 
 const withoutBlank = (lines) => lines.join('\n').trim();

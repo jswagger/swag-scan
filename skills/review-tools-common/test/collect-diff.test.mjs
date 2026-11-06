@@ -314,3 +314,29 @@ test('collector skips fixture folders for untracked files and warns when untrack
   const quiet = JSON.parse(spawnSync(process.execPath, [collectorPath, '--config', codeSweeperConfigPath, 'HEAD'], { cwd: directory, encoding: 'utf8' }).stdout);
   assert.deepEqual(quiet.warnings, [], 'no warning without a flood of untracked files');
 });
+
+test('collector warns when another base branch makes the same change much smaller', (context) => {
+  const directory = mkdtempSync(join(tmpdir(), 'collect-base-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const commitAll = (message) => { git(directory, ['add', '-A']); git(directory, ['commit', '-qm', message]); };
+
+  git(directory, ['init', '-q', '-b', 'develop']);
+  git(directory, ['config', 'user.name', 'Code Review Tests']);
+  git(directory, ['config', 'user.email', 'code-review-tests@example.invalid']);
+  writeFileSync(join(directory, 'seed.py'), 'x = 1\n');
+  commitAll('seed');
+  // "test" is a later branch that already holds 30 files that develop does not.
+  git(directory, ['checkout', '-q', '-b', 'test']);
+  for (let index = 0; index < 30; index += 1) writeFileSync(join(directory, `other${index}.py`), 'y = 1\n');
+  commitAll('other work');
+  git(directory, ['checkout', '-q', '-b', 'feature']);
+  writeFileSync(join(directory, 'mine.py'), 'z = 1\n');
+  commitAll('my change');
+
+  const run = (base) => JSON.parse(spawnSync(process.execPath, [collectorPath, '--config', codeSweeperConfigPath, base], { cwd: directory, encoding: 'utf8' }).stdout);
+  const wrong = run('develop');
+  assert.equal(wrong.changedCount, 31);
+  assert.equal(wrong.warnings.length, 1);
+  assert.match(wrong.warnings[0], /Against develop this change touches 31 files, but against test only 1\./);
+  assert.deepEqual(run('test').warnings, [], 'the right base gets no warning');
+});

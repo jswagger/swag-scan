@@ -363,7 +363,7 @@ body { margin: 0; }
     if (r.branch) parts.push('<b>' + esc(r.branch) + '</b>' + (r.base ? ' against ' + esc(r.base) : ''));
     if (r.files != null) parts.push(r.files + (r.files === 1 ? ' file' : ' files') + ' scanned');
     $('run').innerHTML = parts.length ? parts.join(' · ') : (st === 'waiting' ? 'Waiting for a scan to start.' : 'Scan under way.');
-    if (st === 'stale') $('run').innerHTML += ' · This page stopped getting updates. Run <b>swag-scan dashboard --watch</b> to refresh it.';
+    if (st === 'stale') $('run').innerHTML += ' · This page stopped getting updates (last update ' + clock(Date.now() - data.generatedAt) + ' ago). Run <b>swag-scan dashboard --watch</b> to refresh it.';
 
     $('steps').innerHTML = data.steps.map(function (s, i) { return '<li class="' + s.state + '"><b>Step ' + (i + 1) + '</b>' + esc(s.title) + '</li>'; }).join('');
 
@@ -373,7 +373,8 @@ body { margin: 0; }
     $('s-findings').textContent = k.findings;
     $('s-need').textContent = k.needs;
     $('s-need-label').textContent = k.needsFinal ? 'Need your call' : 'Need your call so far';
-    var end = data.status === 'live' ? Date.now() : (data.endedAt || data.generatedAt);
+    // A page that stopped getting updates freezes its clock at the last update, so it does not look like it is still working.
+    var end = st === 'live' ? Date.now() : (data.endedAt || data.generatedAt);
     $('s-time').textContent = data.startedAt ? clock(end - data.startedAt) : '00:00';
 
     data.agents.forEach(function (a) {

@@ -135,7 +135,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const stale = [];
   for (const { path, content } of buildAgents()) {
     const full = join(ROOT, path);
-    const current = existsSync(full) ? readFileSync(full, 'utf8') : undefined;
+    const current = existsSync(full) ? readFileSync(full, 'utf8').replaceAll('\r\n', '\n') : undefined; // a Windows checkout may have CRLF
     if (current === content) continue;
     stale.push(path);
     if (!check) {

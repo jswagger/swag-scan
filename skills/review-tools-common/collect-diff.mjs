@@ -211,6 +211,34 @@ function collectUntracked(trackedJsTsStems) {
   return { files, skipped, excludedCount, total: paths.length };
 }
 
+// A base that makes the change look many times bigger than it does against another branch is usually the wrong target.
+const BASE_WARN_MIN_EXTRA = 20;
+const BASE_WARN_RATIO = 3;
+
+function fileCountAgainst(ref) {
+  const base = runGit(['merge-base', ref, 'HEAD']).trim();
+  return runGit(['diff', '--name-only', '-z', base, '--']).split('\0').filter((path) => path && !isExcluded(path)).length;
+}
+
+function baseWarnings({ comparisonBase, fileCount }) {
+  if (baseRef === 'HEAD' || fileCount < BASE_WARN_MIN_EXTRA) return [];
+  const warnings = [];
+  for (const { ref, ahead } of baseCandidates()) {
+    if (ref === baseRef || !ahead) continue;
+    let other;
+    try {
+      if (runGit(['merge-base', ref, 'HEAD']).trim() === comparisonBase) continue;
+      other = fileCountAgainst(ref);
+    } catch {
+      continue;
+    }
+    if (other < 1 || fileCount - other < BASE_WARN_MIN_EXTRA || other * BASE_WARN_RATIO > fileCount) continue;
+    warnings.push(`Against ${baseRef} this change touches ${fileCount} files, but against ${ref} only ${other}. `
+      + `If the branch will merge into ${ref}, run again with that base.`);
+  }
+  return warnings.slice(0, 1);
+}
+
 function untrackedWarnings({ branchFiles, untrackedScanned }) {
   if (untrackedScanned <= UNTRACKED_WARN_MIN && untrackedScanned <= branchFiles * UNTRACKED_WARN_RATIO) return [];
   return [`${untrackedScanned} of the scanned files are untracked, but the branch diff has only ${branchFiles}. `
@@ -241,7 +269,7 @@ try {
   const scannedFiles = [...files, ...untracked.files.filter((file) => !changedPaths.has(file.path))];
   const changedCount = diffFiles.length + untracked.total;
   const untrackedScanned = scannedFiles.length - files.length;
-  const warnings = untrackedWarnings({ branchFiles: files.length, untrackedScanned });
+  const warnings = [...baseWarnings({ comparisonBase, fileCount: files.length }), ...untrackedWarnings({ branchFiles: files.length, untrackedScanned })];
   const diffBytes = scannedFiles.reduce(
     (sum, file) => sum + file.changes.reduce((fileSum, change) => fileSum + Buffer.byteLength(change.text, 'utf8') + 1, 0),
     0,

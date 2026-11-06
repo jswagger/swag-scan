@@ -196,3 +196,11 @@ test('unattended mode comes from the flag, SWAG_SCAN_NONINTERACTIVE, or CI', asy
   assert.equal(isNonInteractive({}, { CI: 'true' }), true);
   assert.equal(isNonInteractive({}, { CI: 'false' }), false);
 });
+
+test('a ticket given as a path is called by its file name, not by the path', (context) => {
+  const dir = tempDir(context);
+  write(dir, 'PROJ-123.md', '# Title\n\n## Description\n\nWork.');
+  const result = gatherTicketContext({ path: dir, maxLines: 500 }, join(dir, 'PROJ-123.md'), { env: {}, userSettings: {} });
+  assert.equal(result.found, true);
+  assert.equal(result.ticketName, 'PROJ-123');
+});
