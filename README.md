@@ -56,6 +56,23 @@ Fewer permission prompts: add `Bash(swag-scan *)` to your allowed commands. The 
 
 The three agents have limits: none can create files, only the Inspector can edit (and only with auto-fix on), and the Analyst and Security Guard are report-only. A plugin hook also restricts what they can run in Bash to the Swag Scan scripts, read-only git and read-only file commands, and lets them write only inside `.swag-scan/`. The hook ignores your own session and every other agent. It is a guardrail, not a sandbox.
 
+### Windows and the VS Code extension
+
+Swag Scan has been trial-run on Windows 11 with Node 22. One catch: if you use Claude Code through the VS Code extension, the `claude` command may not be on the PATH of your terminal (`claude: command not found`). The extension ships its own copy. Use that to load the plugin from a folder:
+
+- **Find it:** `%USERPROFILE%\.vscode\extensions\anthropic.claude-code-<version>-win32-x64\resources\native-binary\claude.exe`. The version is part of the folder name, so the path changes when the extension updates.
+- **PowerShell** needs the call operator: `& "<path>\claude.exe" --plugin-dir <swag-scan folder>`
+- **Command Prompt** takes the quoted path alone: `"<path>\claude.exe" --plugin-dir <swag-scan folder>`
+- **Then type the command inside Claude**, not in the shell: start the session first, and only then enter `/swag-scan:swag-scan <base> --ticket <path> --live`. Pasting both lines into the terminal runs the second one as a shell command and fails.
+
+### First run in a new repository
+
+1. **Start Claude inside the repository you are reviewing** (`cd` first). The agents read `.swag-scan/run/summary.json` relative to where the session started, and their writes are limited to `.swag-scan/` there. Reviewing a second repository means a second session started in it.
+2. **Check the base.** It should be the branch this one will merge into, which is not always the default branch. Compare `git diff --stat <base>...HEAD` with what you expect. Swag Scan warns when another base makes the change much smaller, but only you know the real target.
+3. **Keep the tool's folder out of `git status`** by adding `.swag-scan/` to `.git/info/exclude` (local only, nothing to commit).
+4. **Look at the scan summary before the agents run.** It shows how many files came from the branch diff and how many are untracked. Untracked, non-ignored text files are scanned, so a local folder of data files can swamp the real change. If you see a warning, add that folder to `.git/info/exclude` and run again.
+5. **Point to the ticket** with `--ticket <path>` or a `ticketFolder` in `~/.swag-scan/settings.json`, if the work has one. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
+
 ### Findings format
 
 Each agent hands in its judged findings in one shared shape, saved by `skills/review-tools-common/save-findings.mjs` to `.swag-scan/run/findings-<agent>.json`. The script checks the findings, assigns ids (`AN-1`, `IN-1`, `SG-1`, critical first) and adds the tool, base, coverage line and counts.
