@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { evaluateCommand, isSwagScanAgent, runHook } from '../../../hooks/guard-bash.mjs';
+import { evaluateCommand, isSwagScanAgent, lex, runHook } from '../../../hooks/guard-bash.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const HOOK = join(ROOT, 'hooks', 'guard-bash.mjs');
@@ -111,4 +111,17 @@ test('the hook process: exit 2 with a reason for a blocked agent command, silent
   assert.equal(fine.stdout + fine.stderr, '');
   assert.equal(run({ tool_name: 'Bash', cwd: REPO, tool_input: { command: 'rm -rf /' } }).status, 0);
   assert.equal(run(undefined, 'not json').status, 0);
+});
+
+test('Windows paths keep their backslashes, but real shell escapes still work', () => {
+  const words = (command) => lex(command)[0].words;
+  assert.deepEqual(words('node C:\\tools\\x\\run.mjs'), ['node', 'C:\\tools\\x\\run.mjs']);
+  assert.deepEqual(words('node "C:\\tools\\x\\run.mjs"'), ['node', 'C:\\tools\\x\\run.mjs']);
+  assert.deepEqual(words("node 'C:\\tools\\x'"), ['node', 'C:\\tools\\x']);
+  assert.deepEqual(words('echo a\\ b'), ['echo', 'a b'], 'a backslash-space is still an escaped space');
+  assert.deepEqual(words('echo "a\\"b"'), ['echo', 'a"b'], 'inside double quotes, \\" is still an escaped quote');
+  // An escaped quote after a drive path must not flip the guard's view of what is quoted.
+  blocked('echo C:\\" ; rm x ; echo C:\\" ');
+  assert.equal(lex('echo C:\\;rm x').length, 1, 'an escaped semicolon does not start a new command');
+  blocked('echo C:\\x ; rm y');
 });

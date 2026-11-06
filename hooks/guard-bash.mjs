@@ -30,19 +30,25 @@ const FIND_UNSAFE = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir', '-
 
 class Blocked extends Error {}
 
+// A backslash before one of these ends a Windows path segment (C:\tools\x); it is never a shell escape there.
+const PATH_CHAR = /[A-Za-z0-9_.@+,=%~-]/;
+const DOUBLE_QUOTE_ESCAPES = new Set(['$', '`', '"', '\\', '\n']);
+
 /** Splits a command into segments of plain words plus redirects. Only unquoted separators split. */
-function lex(command) {
+export function lex(command) {
   const segments = [];
   let words = [];
   let redirects = [];
   let word = '';
   let inWord = false;
   let quote = null;
+  let windowsPath = false; // the current word started with a drive letter and a backslash
 
   const endWord = () => {
     if (inWord) words.push(word);
     word = '';
     inWord = false;
+    windowsPath = false;
   };
   const endSegment = () => {
     endWord();
@@ -62,14 +68,21 @@ function lex(command) {
     }
     if (quote === '"') {
       if (char === '"') quote = null;
-      else if (char === '\\' && next !== undefined) { word += next; i += 1; }
+      else if (char === '\\' && DOUBLE_QUOTE_ESCAPES.has(next)) { word += next; i += 1; }
       else if (char === '`' || (char === '$' && next === '(')) throw new Blocked('command substitution is not allowed');
       else word += char;
       continue;
     }
 
     if (char === "'" || char === '"') { quote = char; inWord = true; continue; }
-    if (char === '\\' && next !== undefined) { word += next; inWord = true; i += 1; continue; }
+    if (char === '\\' && next !== undefined) {
+      if (/^[A-Za-z]:$/.test(word)) windowsPath = true;
+      if (windowsPath && PATH_CHAR.test(next)) { word += char; inWord = true; continue; }
+      word += next;
+      inWord = true;
+      i += 1;
+      continue;
+    }
     if (char === '`' || (char === '$' && next === '(')) throw new Blocked('command substitution is not allowed');
     if ((char === '<' || char === '>') && next === '(') throw new Blocked('process substitution is not allowed');
     if (char === '(' || char === ')') throw new Blocked('subshells are not allowed');

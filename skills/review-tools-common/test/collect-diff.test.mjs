@@ -278,3 +278,39 @@ test('the tools\' own output folders are never part of the diff', (context) => {
   assert.deepEqual(report.files.map((file) => file.path), ['real.py']);
   assert.equal(report.excludedCount, 2);
 });
+
+test('collector skips fixture folders for untracked files and warns when untracked files dwarf the branch diff', (context) => {
+  const directory = mkdtempSync(join(tmpdir(), 'collect-untracked-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+
+  git(directory, ['init', '-q']);
+  git(directory, ['config', 'user.name', 'Code Review Tests']);
+  git(directory, ['config', 'user.email', 'code-review-tests@example.invalid']);
+  writeFileSync(join(directory, 'app.py'), 'value = 1\n');
+  git(directory, ['add', 'app.py']);
+  git(directory, ['commit', '-qm', 'baseline']);
+  writeFileSync(join(directory, 'app.py'), 'value = 2\n');
+
+  mkdirSync(join(directory, 'tests', 'testdata'), { recursive: true });
+  mkdirSync(join(directory, 'local-data'), { recursive: true });
+  for (let index = 0; index < 25; index += 1) {
+    writeFileSync(join(directory, 'tests', 'testdata', `case${index}.py`), 'x = 1\n');
+    writeFileSync(join(directory, 'local-data', `row${index}.py`), 'x = 1\n');
+  }
+
+  const result = spawnSync(process.execPath, [collectorPath, '--config', codeSweeperConfigPath, 'HEAD'], { cwd: directory, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  const paths = report.files.map((file) => file.path);
+  assert.equal(paths.some((path) => path.includes('testdata/')), false, 'fixture folders are skipped');
+  assert.equal(report.branchDiffCount, 1);
+  assert.equal(report.untrackedCount, 25);
+  assert.equal(report.warnings.length, 1);
+  assert.match(report.warnings[0], /25 of the scanned files are untracked, but the branch diff has only 1/);
+  assert.match(report.warnings[0], /\.git\/info\/exclude/);
+  assert.match(result.stderr, /warning: 25 of the scanned files are untracked/);
+
+  rmSync(join(directory, 'local-data'), { recursive: true });
+  const quiet = JSON.parse(spawnSync(process.execPath, [collectorPath, '--config', codeSweeperConfigPath, 'HEAD'], { cwd: directory, encoding: 'utf8' }).stdout);
+  assert.deepEqual(quiet.warnings, [], 'no warning without a flood of untracked files');
+});

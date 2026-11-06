@@ -86,6 +86,9 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
     excludedCount: diff.excludedCount,
     scannedCount: diff.files.length,
     diffBytes: diff.diffBytes,
+    branchDiffCount: diff.branchDiffCount,
+    untrackedCount: diff.untrackedCount,
+    warnings: diff.warnings ?? [],
     coverage: diff.coverage,
     suggestion: diff.suggestion,
   });
@@ -175,6 +178,9 @@ export function renderSummary(summary) {
   }
   const coverage = summary.agents.find((agent) => agent.coverage?.line)?.coverage;
   if (coverage) lines.push(coverage.line);
+  const counted = summary.agents.find((agent) => agent.untrackedCount > 0);
+  if (counted) lines.push(`Scanned ${plural(counted.scannedCount, 'file')}: ${counted.branchDiffCount} in the branch diff, ${counted.untrackedCount} untracked.`);
+  for (const warning of new Set(summary.agents.flatMap((agent) => agent.warnings ?? []))) lines.push(`Warning: ${warning}`);
   const ticket = summary.ticket;
   if (ticket?.found) lines.push(`Ticket ${ticket.id} (from ${ticket.source}): ${plural(ticket.criteria, 'acceptance criterion', 'acceptance criteria')}${ticket.repositories.length ? `, ${plural(ticket.repositories.length, 'repository', 'repositories')}` : ''}`);
   else if (ticket?.notes?.length) lines.push(`Ticket${ticket.id ? ` ${ticket.id}` : ''}: ${ticket.notes[0].replace(/^Cannot look up \S+: /, '').split('. ')[0].replace(/\.$/, '')}.`);

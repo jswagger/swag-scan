@@ -17,6 +17,11 @@ const { isExcluded: isConfigExcluded } = createFileFilters(config.scan);
 // The tools' own output (run results, caches, reports) is never part of the change under review.
 const isToolOutput = (path) => /^\.(?:swag-scan|bug-hunter)\//.test(path.replaceAll('\\', '/'));
 const isExcluded = (path) => isToolOutput(path) || isConfigExcluded(path);
+// Untracked files are usually new work, but a folder of test data or snapshots is not, so it is skipped for them only.
+const isFixtureFolder = (path) => /(?:^|\/)(?:testdata|fixtures|__snapshots__)\//i.test(path.replaceAll('\\', '/'));
+// Warn when the untracked files dwarf the real change: usually a local data folder the team normally ignores.
+const UNTRACKED_WARN_MIN = 20;
+const UNTRACKED_WARN_RATIO = 5;
 const requestedBaseRef = args[2] ?? config.diff.baseRef ?? 'auto';
 // 'auto' (and the older 'origin/HEAD' default) means: pick the most likely base branch.
 const autoBase = requestedBaseRef === 'auto' || requestedBaseRef === 'origin/HEAD';
@@ -178,7 +183,7 @@ function collectUntracked(trackedJsTsStems) {
   let excludedCount = 0;
 
   for (const path of paths) {
-    if (isExcluded(path)) {
+    if (isExcluded(path) || isFixtureFolder(path)) {
       excludedCount += 1;
       continue;
     }
@@ -206,6 +211,12 @@ function collectUntracked(trackedJsTsStems) {
   return { files, skipped, excludedCount, total: paths.length };
 }
 
+function untrackedWarnings({ branchFiles, untrackedScanned }) {
+  if (untrackedScanned <= UNTRACKED_WARN_MIN && untrackedScanned <= branchFiles * UNTRACKED_WARN_RATIO) return [];
+  return [`${untrackedScanned} of the scanned files are untracked, but the branch diff has only ${branchFiles}. `
+    + 'If those are local files that are not part of this change, add their folder to .git/info/exclude and run again.'];
+}
+
 try {
   const trackedJsTsStems = new Set(runGit(['ls-files', '-z'], { encoding: 'buffer' })
     .toString('utf8')
@@ -229,6 +240,8 @@ try {
   const excludedCount = diffFiles.length - files.length + untracked.excludedCount;
   const scannedFiles = [...files, ...untracked.files.filter((file) => !changedPaths.has(file.path))];
   const changedCount = diffFiles.length + untracked.total;
+  const untrackedScanned = scannedFiles.length - files.length;
+  const warnings = untrackedWarnings({ branchFiles: files.length, untrackedScanned });
   const diffBytes = scannedFiles.reduce(
     (sum, file) => sum + file.changes.reduce((fileSum, change) => fileSum + Buffer.byteLength(change.text, 'utf8') + 1, 0),
     0,
@@ -254,6 +267,7 @@ try {
       + `Diff collector: ${changedCount} changed, ${excludedCount} excluded, ${scannedFiles.length} scanned; `
       + `diff ${kb(diffBytes)}${gateBytes ? ` of ${kb(gateBytes)} gate` : ''}.\n`
       + (coverage.unchecked.length ? `Diff collector: ${renderCoverageLine(coverage).replace(/^Coverage: /, '')}\n` : '')
+      + warnings.map((warning) => `Diff collector: warning: ${warning}\n`).join('')
       + (emptyDiff ? `Diff collector: no changes found against ${baseRef}. ${suggestion}\n` : ''),
   );
 
@@ -267,6 +281,9 @@ try {
     excludedCount,
     changedCount,
     diffBytes,
+    branchDiffCount: files.length,
+    untrackedCount: untrackedScanned,
+    warnings,
     emptyDiff,
     suggestion,
     coverage: { ...coverage, line: renderCoverageLine(coverage) },

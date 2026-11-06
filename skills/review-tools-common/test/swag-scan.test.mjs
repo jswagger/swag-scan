@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { AGENTS, PlainError, runScan } from '../swag-scan.mjs';
+import { AGENTS, PlainError, renderSummary, runScan } from '../swag-scan.mjs';
 
 const script = fileURLToPath(new URL('../swag-scan.mjs', import.meta.url));
 
@@ -173,4 +173,13 @@ test('a stored review is reported as already reviewed on the next run, until a n
 
   git(repo, ['commit', '--allow-empty', '-qm', 'another']);
   assert.equal(find(runScan({ repo })).cache.hit, false);
+});
+
+test('the summary shows the branch-diff versus untracked split and any untracked-flood warning', () => {
+  const agent = { name: 'Analyst', tool: 'bug-hunter', status: 'done', leads: 1, scannedCount: 691, branchDiffCount: 3, untrackedCount: 688, warnings: ['688 of the scanned files are untracked, but the branch diff has only 3. Exclude them.'] };
+  const text = renderSummary({ branch: 'feature', base: { ref: 'origin/test' }, modelTokens: 0, agents: [agent, { ...agent, name: 'Inspector', tool: 'code-sweeper' }], runDir: '.swag-scan/run' });
+  assert.match(text, /Scanned 691 files: 3 in the branch diff, 688 untracked\./);
+  assert.equal(text.match(/Warning: 688 of the scanned files are untracked/g).length, 1, 'the same warning is shown once');
+  const clean = renderSummary({ branch: 'feature', base: { ref: 'main' }, modelTokens: 0, agents: [{ ...agent, untrackedCount: 0, warnings: [] }], runDir: '.swag-scan/run' });
+  assert.doesNotMatch(clean, /untracked|Warning/);
 });

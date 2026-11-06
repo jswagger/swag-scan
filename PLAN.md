@@ -78,6 +78,25 @@ The plugin is not installed anywhere; Claude Code loads it straight from a folde
 
 ## To do
 
+### Trial-run feedback (from `project_swag_scan_testing.md`, 35 findings over 4 runs: TypeScript/React and Python, Windows)
+Verdict: agents' judgment is the strongest part, the scripts-only layer is the noisiest. Finding numbers in brackets. Work order: criticals first, check in, then the rest.
+
+| # | Sev | Item | Findings | Status |
+|---|-----|------|----------|--------|
+| 1 | 🔴 | Bash guard ate backslashes in Windows paths (`C:\tools\x`) | 1 | Fixed in `hooks/guard-bash.mjs` (+1 test). Windows re-run still needed to confirm |
+| 2 | 🔴 | Analyst's report went to `<repo>/.bug-hunter/reports` | 24, 29 | Fixed: Analyst passes `--out .swag-scan/run/bug-hunter-reports` (source: `scripts/build-agents.mjs`) |
+| 3 | 🔴 | Untracked files flooded the scan (691 vs 3) | 28, 32 | Fixed: warning + "N in branch diff, M untracked" line; `testdata/`, `fixtures/`, `__snapshots__/` skipped for untracked files (+2 tests) |
+| 4 | 🟡 | Wrong base is silent (90 files vs 9) | 12 | Todo |
+| 5 | 🟡 | Ticket parsing: two tables merged, ids clash, other repos' criteria linked | 21, 22, 30 | Todo |
+| 6 | 🟡 | Dashboard watcher dies on EPERM rename; stays LIVE and clock runs when idle | 15, 18-20 | Todo |
+| 7 | 🟡 | Scanner noise: SWEEP-107/111/112, REMOVED_EARLY_EXIT, locale JSON, size gate | 4, 7-10, 13 | Todo |
+| 8 | 🟡 | `report.md` opens as raw text; write `report.html` | 25, 26 | Todo |
+| 9 | 🟡 | Small bugs: `ticket.id` shows path, `_development.md` lookup, Windows test portability (CRLF, POSIX paths) | 2, 3, 5, 6 | Todo |
+| 10 | 🟡 | Docs: Windows/VS Code CLI not on PATH, PowerShell vs cmd launch, "first run in a new repo" checklist | env notes, 31 | Todo |
+| 11 | ✅ | Later: multi-repo mode; scanner rule for relaxed guards + mocked helpers | 34, 35 | Backlog |
+
+Note: the scanner noise in row 7 is mostly filtered out by the agents before the final report, so it is lower urgency than it looks.
+
 ### Before the first push
 - [ ] Skim `git log --oneline main..HEAD` and `git diff main --stat`.
 - [ ] Run the tests and validator once more on the final commit (commands below).
@@ -895,3 +914,4 @@ node scripts/install-copilot.mjs --project <dir> [--target .agents/skills] [--fo
   Findings saved, Report); stats are files scanned, leads, findings, need-your-call, elapsed ("Fixed for you" dropped: first run is report-only);
   no per-file "checked n of 12" because scripts report steps, not files; no replay controls; system fonts (no Google Fonts, offline rule). 8 new tests.
 - 2026-11-04 (later): finished banner restyled and the prototype approved (see Resume here for the color rule and the Markdown-in-Safari gap). 243 tests pass.
+- 2026-11-06: trial-run feedback arrived (Windows; TypeScript/React and Python repos). Added the "Trial-run feedback" table under To do. Fixed the three criticals: guard keeps Windows backslashes (lexer follows real bash rules inside double quotes, keeps `C:\` paths), Analyst report routed into `.swag-scan/`, untracked-file flood warning + fixture folders skipped. Full suite 246 passing on macOS; the Windows guard fix still needs a Windows re-run. Saved Jeremy's `Memory.md` working preferences to memory.
