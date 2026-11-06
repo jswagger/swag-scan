@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { storeCache } from './cache.mjs';
 import { emit } from './events.mjs';
 import { SEVERITIES } from './findings.mjs';
+import { renderReportHtml } from './report-html.mjs';
 
 export const REPORT_SCHEMA = 1;
 
@@ -185,7 +186,7 @@ export function renderMarkdown(report) {
 }
 
 /**
- * Writes report.md and report.json to the run folder, keeps a copy in .swag-scan/reports/<commit>/ that survives the next
+ * Writes report.md, report.html and report.json to the run folder, keeps a copy in .swag-scan/reports/<commit>/ that survives the next
  * scan, and records each reviewed agent in the result cache so an identical re-run is recognised.
  */
 export function writeReport({ runDir, repo, now = new Date() }) {
@@ -195,12 +196,14 @@ export function writeReport({ runDir, repo, now = new Date() }) {
 
   const keepDir = join(repo, '.swag-scan', 'reports', (run.summary.head ?? 'unknown').slice(0, 7));
   mkdirSync(keepDir, { recursive: true });
-  const files = { markdown: join(runDir, 'report.md'), json: join(runDir, 'report.json') };
+  const files = { markdown: join(runDir, 'report.md'), html: join(runDir, 'report.html'), json: join(runDir, 'report.json') };
   writeFileSync(files.markdown, markdown);
+  writeFileSync(files.html, renderReportHtml(markdown)); // the page the dashboard opens: tables and bold text, not raw Markdown
   writeFileSync(files.json, `${JSON.stringify(report, null, 2)}\n`);
 
-  const kept = { markdown: join(keepDir, 'report.md'), json: join(keepDir, 'report.json') };
+  const kept = { markdown: join(keepDir, 'report.md'), html: join(keepDir, 'report.html'), json: join(keepDir, 'report.json') };
   copyFileSync(files.markdown, kept.markdown);
+  copyFileSync(files.html, kept.html);
   copyFileSync(files.json, kept.json);
   const cached = [];
   for (const agent of run.summary.agents) {

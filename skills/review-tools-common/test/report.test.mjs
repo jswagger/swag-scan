@@ -186,6 +186,8 @@ test('end to end: scan, save findings, build the report, and the next scan knows
   assert.match(result.markdown, /\| SG-1 \| 🔴 Critical \|/);
   assert.match(result.markdown, /⚠ Did not report/, 'the Analyst had leads but saved nothing');
   assert(existsSync(join(runDir, 'report.md')) && existsSync(join(runDir, 'report.json')));
+  assert.match(readFileSync(join(runDir, 'report.html'), 'utf8'), /<table>[\s\S]*SG-1/, 'the same report as a web page');
+  assert(existsSync(result.kept.html));
   assert.equal(JSON.parse(readFileSync(join(runDir, 'report.json'), 'utf8')).counts.critical, 1);
   assert(existsSync(result.kept.markdown) && existsSync(join(repo, '.swag-scan', 'reports', result.report.head.slice(0, 7), 'findings-security-guard.json')));
   assert.deepEqual(result.cached, ['security-guard']);

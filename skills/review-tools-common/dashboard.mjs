@@ -278,7 +278,10 @@ export function writeDashboard({ swagDir, now = Date.now(), pageOnly = false } =
   const runDir = join(swagDir, 'run');
   const state = buildState(readEvents(runDir), readSummary(runDir), { now });
   // The button on the finished banner. The path is relative to the page, which sits in .swag-scan/.
-  if (state.status === 'done' && state.result && existsSync(join(runDir, 'report.md'))) state.result.href = 'run/report.md';
+  if (state.status === 'done' && state.result) {
+    const readable = ['report.html', 'report.md'].find((name) => existsSync(join(runDir, name))); // the web page reads better than raw Markdown
+    if (readable) state.result.href = `run/${readable}`;
+  }
   mkdirSync(swagDir, { recursive: true });
   const page = join(swagDir, DASHBOARD_FILE);
   const data = join(swagDir, DATA_FILE);

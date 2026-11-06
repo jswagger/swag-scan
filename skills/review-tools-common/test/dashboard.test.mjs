@@ -131,6 +131,8 @@ test('a finished run links to its report only when the report exists; an error n
   assert.equal(writeDashboard({ swagDir }).state.result.href, undefined, 'no report file yet');
   writeFileSync(join(runDir, 'report.md'), '# Report\n');
   assert.equal(writeDashboard({ swagDir }).state.result.href, 'run/report.md');
+  writeFileSync(join(runDir, 'report.html'), '<!doctype html>');
+  assert.equal(writeDashboard({ swagDir }).state.result.href, 'run/report.html', 'the web page is preferred over raw Markdown');
   assert.match(readFileSync(join(swagDir, 'dashboard.html'), 'utf8'), /Open the full report/);
 });
 
