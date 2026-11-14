@@ -11,14 +11,14 @@
 // Exit code 0 means the scan ran (even if it found nothing); 1 means it could not run, with one plain sentence why.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkCache } from './cache.mjs';
 import { emit } from './events.mjs';
-import { watchDashboard, writeDashboard } from './dashboard.mjs';
+import { DASHBOARD_FILE, watchDashboard, writeDashboard } from './dashboard.mjs';
 import { writeReport } from './report.mjs';
-import { scopeCriteria } from './ticket.mjs';
+import { looksLikePath, scopeCriteria } from './ticket.mjs';
 
 const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = dirname(COMMON_DIR);
@@ -61,6 +61,49 @@ function git(repo, args) {
 
 const plural = (count, word, many = `${word}s`) => `${count} ${count === 1 ? word : many}`;
 const seconds = (ms) => `${(ms / 1000).toFixed(1)}s`;
+
+/**
+ * Looks for a file of the same name close to a ticket path that does not exist: in the folders above it and their
+ * direct subfolders. This catches a typo such as a missing folder in the middle of the path. Undefined if nothing is close.
+ */
+export function suggestTicketPath(missing, repo) {
+  const target = isAbsolute(missing) ? missing : resolve(repo, missing);
+  const name = basename(target);
+  let folder = dirname(target);
+  for (let level = 0; level < 4; level += 1) {
+    try {
+      if (existsSync(join(folder, name)) && statSync(join(folder, name)).isFile()) return join(folder, name);
+      for (const entry of readdirSync(folder, { withFileTypes: true })) {
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+          const candidate = join(folder, entry.name, name);
+          if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+        }
+      }
+    } catch {
+      // not readable: try the next folder up
+    }
+    if (folder === dirname(folder)) break;
+    folder = dirname(folder);
+  }
+  return undefined;
+}
+
+function missingTicketMessage(ticket, note, repo) {
+  const reason = (note ?? `Could not find ticket ${ticket}.`).replace(/\.$/, '');
+  const guess = looksLikePath(ticket) ? suggestTicketPath(ticket, repo) : undefined;
+  return `${reason}. The scan did not start, so nothing was spent on it.${guess ? ` Did you mean ${guess}?` : ''} Fix the --ticket value, or leave --ticket out to scan without a ticket.`;
+}
+
+/** How many findings an earlier, reused review had: read from the findings file the cache kept. Undefined if unreadable. */
+function cachedFindingCount(reports) {
+  try {
+    const path = reports.find((report) => /findings-[^\\/]+\.json$/.test(report));
+    const list = path ? JSON.parse(readFileSync(path, 'utf8')).findings : undefined;
+    return Array.isArray(list) ? list.length : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Runs one tool's script pipeline for a repo. Returns what the summary needs; writes each step's JSON to `runDir`. */
 function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir, fresh }) {
@@ -107,6 +150,9 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
     result.files.context = contextPath;
     const context = read('context');
     const found = context.ticket;
+    // A ticket the user named on purpose that cannot be read stops the run here, before the crew spends a model review
+    // on 0 criteria. A ticket guessed from the branch name, or none at all, stays a one-line note.
+    if (ticket && !found.found) throw new PlainError(missingTicketMessage(ticket, found.notes?.[0], repo));
     // Reviewers must not see what is already built, so criterion status is kept out of the files the agents read
     // and saved separately for the report: ticket-report.json.
     // Criteria for other repositories stay in the report, marked as such, but findings are never linked to them.
@@ -157,7 +203,7 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
 
   try {
     const cache = checkCache({ tool, configPath: config, diffPath: result.files.diff, contextPath, repo, fresh });
-    result.cache = { hit: cache.hit, cacheable: cache.cacheable, key: cache.key, reason: cache.reason, ...(cache.hit ? { reports: cache.entry.reports, summary: cache.entry.summary } : {}) };
+    result.cache = { hit: cache.hit, cacheable: cache.cacheable, key: cache.key, reason: cache.reason, ...(cache.hit ? { reports: cache.entry.reports, summary: cache.entry.summary, findings: cachedFindingCount(cache.entry.reports) } : {}) };
   } catch (error) {
     result.cache = { hit: false, cacheable: false, key: null, reason: `Cache unavailable: ${error.message}` };
   }
@@ -191,6 +237,18 @@ export function renderSummary(summary) {
   return lines.join('\n');
 }
 
+/**
+ * A dashboard page left over from an earlier run embeds that run's finished state and would never poll again. If one
+ * exists, rewrite it now so it shows the new run. Does not create a page nobody asked for, and never fails the scan.
+ */
+function refreshDashboardPage(swagDir) {
+  try {
+    if (existsSync(join(swagDir, DASHBOARD_FILE))) writeDashboard({ swagDir });
+  } catch {
+    // The dashboard is a convenience; a failed write must not stop a scan.
+  }
+}
+
 /** Runs the scan. `log` receives one progress line per agent as it finishes. */
 export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents, fresh = false, log = () => {}, now = () => Date.now() } = {}) {
   const started = now();
@@ -211,6 +269,7 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
 
   log(`Running: ${crew.map((agent) => agent.name).join(', ')} · scripts only, report-only, no model tokens`);
   emit(runDir, { kind: 'run-started', phase: 'scan', steps: crew.length, label: 'scan' });
+  refreshDashboardPage(join(root, '.swag-scan'));
   const results = [];
   for (const [index, agent] of crew.entries()) {
     const toolStart = now();

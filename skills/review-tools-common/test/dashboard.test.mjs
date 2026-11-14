@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { DATA_FILE, DASHBOARD_FILE, buildState, renderPage, watchDashboard, writeDashboard } from '../dashboard.mjs';
+import { DATA_FILE, DASHBOARD_FILE, PAGE_TEMPLATE, buildState, cleanStaleTemps, renderPage, watchDashboard, writeDashboard } from '../dashboard.mjs';
 import { emit } from '../events.mjs';
 
 const T0 = Date.parse('2026-11-04T12:00:00.000Z');
@@ -155,4 +155,70 @@ test('a failed write does not end the watcher: it keeps trying and finishes when
   const final = await watching;
   assert.equal(final.status, 'done');
   assert.match(readFileSync(join(swagDir, DATA_FILE), 'utf8'), /SWAG_SCAN_DATA/);
+});
+
+test('an agent whose review was reused says so, and its earlier findings count in the Findings tile', () => {
+  const summary = { agents: [
+    { id: 'analyst', cache: { hit: false } },
+    { id: 'inspector', cache: { hit: true, findings: 4 } },
+  ] };
+  const state = buildState([
+    ev(0, { kind: 'run-started', agent: 'swag-scan', phase: 'scan', steps: 3 }),
+    ev(1, { kind: 'done', agent: 'inspector', phase: 'scan', count: 15 }),
+    ev(2, { kind: 'started', agent: 'analyst', phase: 'review' }),
+    ev(3, { kind: 'saved', agent: 'analyst', phase: 'review', count: 2 }),
+    ev(4, { kind: 'run-done', agent: 'swag-scan', phase: 'report', count: 2 }),
+  ], summary, { now: T0 });
+  assert.equal(agent(state, 'inspector').state, 'done');
+  assert.match(agent(state, 'inspector').line, /^Reused the earlier review/);
+  assert.doesNotMatch(agent(state, 'inspector').line, /lead|closer look/);
+  assert.equal(state.stats.findings, 6);
+  assert.equal(state.stats.reused, 4);
+  assert.equal(state.feed.some((entry) => /closer look/.test(entry.text)), false);
+});
+
+test('without a cache hit nothing is marked as reused', () => {
+  const state = buildState([ev(0, { kind: 'run-started', agent: 'swag-scan' })], { agents: [{ id: 'analyst', cache: { hit: false } }] }, { now: T0 });
+  assert.equal(state.stats.reused, 0);
+  assert.equal(agent(state, 'analyst').reused, null);
+});
+
+test('the watcher rewrites the page file when a new run starts, so a finished page does not stay frozen', async (context) => {
+  const swagDir = join(folder(context), '.swag-scan');
+  const runDir = join(swagDir, 'run');
+  mkdirSync(runDir, { recursive: true });
+  writeFileSync(join(runDir, 'events.jsonl'), `${JSON.stringify(ev(0, { kind: 'run-started', agent: 'swag-scan' }))}\n${JSON.stringify(ev(1, { kind: 'run-done', agent: 'swag-scan', count: 9 }))}\n`);
+  const watching = watchDashboard({ swagDir, intervalMs: 20 });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.match(readFileSync(join(swagDir, DASHBOARD_FILE), 'utf8'), /"status":"done"/, 'the page starts out holding the old finished run');
+  rmSync(runDir, { recursive: true, force: true });
+  mkdirSync(runDir, { recursive: true });
+  emit(runDir, { kind: 'run-started' });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const page = readFileSync(join(swagDir, DASHBOARD_FILE), 'utf8');
+  assert.match(page, /"status":"live"/);
+  assert.doesNotMatch(page, /"status":"done"/);
+  emit(runDir, { kind: 'run-done', phase: 'report', count: 1 });
+  await watching;
+});
+
+test('stale temp files from a cut-off write are removed, fresh ones and other files are kept', (context) => {
+  const swagDir = folder(context);
+  const old = join(swagDir, 'dashboard-data.js.1234.tmp');
+  const fresh = join(swagDir, 'dashboard-data.js.5678.tmp');
+  const other = join(swagDir, 'notes.tmp');
+  for (const file of [old, fresh, other]) writeFileSync(file, 'x');
+  utimesSync(old, new Date(T0), new Date(T0));
+  const removed = cleanStaleTemps(swagDir, { now: T0 + 10 * 60 * 1000 });
+  assert.deepEqual(removed, ['dashboard-data.js.1234.tmp']);
+  assert.equal(existsSync(old), false);
+  utimesSync(fresh, new Date(T0 + 10 * 60 * 1000), new Date(T0 + 10 * 60 * 1000));
+  assert.deepEqual(cleanStaleTemps(swagDir, { now: T0 + 10 * 60 * 1000 }), []);
+  assert.equal(existsSync(other), true);
+});
+
+test('a finished page keeps a slow poll, so an old browser tab notices a newer run', () => {
+  const page = readFileSync(PAGE_TEMPLATE, 'utf8');
+  assert.match(page, /DONE_POLL_MS/);
+  assert.doesNotMatch(page, /if \(data\.status === 'live' \|\| data\.status === 'waiting'\) timer/);
 });

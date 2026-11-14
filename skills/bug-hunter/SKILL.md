@@ -58,10 +58,13 @@ node "$S/build-packets.mjs"    --config "$CFG" --diff "$RUN/diff.json" --scan "$
    - **Null and undefined:** for each new or changed function, what happens when each parameter, property, or lookup result is null/undefined/empty, and is that handled the way surrounding code expects?
    - **Surrounding logic:** the packet shows ±context lines. Read the code before and after the hunk to confirm the existing logic paths still hold. Open the full file only when the packet is not enough.
    - **Acceptance criteria:** which ticket edge cases does this change fail to handle?
+   - **What the user actually sees:** when a failure scenario depends on how something renders (for example "the dialog opens with no text"), open the code that decides whether it renders at all, such as `message ? <Dialog/> : null`, before you write the evidence. A guard at the call site can turn "shows an empty dialog" into "shows nothing". Name what you read.
    - **Tests:** if `signals.logicChangedWithoutTests` is true, say which changed behavior has no test coverage in this diff.
 
    Read each packet once; do not re-derive script output.
 6. **Classify and write findings.** Use the structure below. Every 🔴 needs a concrete failure scenario (specific input or state, and the wrong result). Every 🟡 needs the one specific thing to verify. No generic advice. Merge duplicates, and keep one entry per root cause.
+
+   **Severity.** Use 🔴 for a failure that happens on a normal path, loses or corrupts data, or is exploitable. A problem that only happens on an error path (a network failure, a server error, a rare response shape) and ends in a missing message, a silent failure or an unhandled rejection is 🟡 unless it also loses data or leaves the screen unusable. Say in the evidence which path triggers it, so the rating can be checked.
 7. **Auto-fix** only if `autoFix` is `true` and only 🔴 items with an unambiguous fix; mark them `autoFixed: true` with `fixNote`. Run the narrowest relevant test afterward.
 8. **Write the report.** Save your findings to `.bug-hunter/run/findings.json` and run:
 

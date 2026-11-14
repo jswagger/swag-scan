@@ -174,13 +174,13 @@ A regression safety net. It looks for removed guards, dropped awaits, changed co
 
 ### Re-runs are cached
 
-When nothing has changed since the last review (same commit, same base, same config and ticket, same tool version), Bug Hunter returns the earlier report instead of repeating the review. Results are kept in `.swag-scan/cache/` (add it to `.gitignore`). Nothing is cached while you have uncommitted changes, and asking for a fresh run (`--fresh`) skips the cache.
+When nothing has changed since the last review (same commit, same base, same config and ticket, same tool version), Bug Hunter returns the earlier report instead of repeating the review. Results are kept in `.swag-scan/cache/` (add it to `.gitignore`). Nothing is cached while you have uncommitted changes, and asking for a fresh run (`--fresh`) skips the cache for every selected agent, so all of them review again. The cache is per agent: if only the ticket changed, only the agents that read the ticket (the Analyst) review again, and the others report "Reused the earlier review of this commit". The dashboard and report count their earlier findings and label them as reused.
 
 ### Ticket files
 
 Bug Hunter checks the change against a ticket's acceptance criteria. It needs no configuration if the branch name holds a ticket ID (such as `feature/PROJ-123`) and it can find the ticket folder.
 
-- **Which ticket:** `--ticket PROJ-123` (an ID) or `--ticket path/to/file.md` (a path, inside or outside the repo). With neither, the ID is taken from the branch name.
+- **Which ticket:** `--ticket PROJ-123` (an ID) or `--ticket path/to/file.md` (a path, inside or outside the repo). With neither, the ID is taken from the branch name. A `--ticket` you typed that cannot be found (a wrong path or an unknown ID) stops the run before any model review, with the reason and, for a path, the closest real file it can find. A ticket guessed from the branch name that is missing only adds a one-line note.
 - **Where tickets live:** an ID is looked up as `PROJ-123.md` or `.txt` (or `PROJ-123-any-title.md`) in the first of: `--ticket-dir`, the `SWAG_SCAN_TICKET_DIR` environment variable, `ticketFolder` in `~/.swag-scan/settings.json` (a per-user file, outside any repo), or `ticketContext.path` in the repo's config. There is no built-in default folder.
 - **What reviewers see:** only the title, the description and the acceptance criteria. Implementation or development logs, notes and any other section are removed, because they describe what was built and would bias the review. The report names the sections that were left out. A ticket with no headings is passed whole, with a note.
 - **Format assumed (tolerant, markdown):**

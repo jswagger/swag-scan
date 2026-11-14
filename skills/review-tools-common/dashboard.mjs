@@ -7,7 +7,7 @@
 // re-loads dashboard-data.js next to it, which a page opened from disk is allowed to do (it may not fetch files).
 // It never contains code or finding text: only the short fields that events carry.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RUN, readEvents } from './events.mjs';
@@ -57,6 +57,7 @@ const VOICE = {
   },
 };
 const NO_CHANGES = 'No changes to check.';
+const REUSED = 'Reused the earlier review of this commit.';
 
 const at = (event) => Date.parse(event.t) || 0;
 
@@ -67,8 +68,13 @@ const at = (event) => Date.parse(event.t) || 0;
 export function buildState(events, summary, { now = Date.now() } = {}) {
   const agents = Object.fromEntries(CREW.map((id) => [id, {
     id, name: NAMES[id], state: 'idle', line: 'Standing by.', tool: null, toolUsed: false,
-    leads: null, findings: 0, saved: null, reviewed: false,
+    leads: null, findings: 0, saved: null, reviewed: false, reused: null,
   }]));
+  // An agent whose review was reused from the cache never runs a review phase, so nothing in the event log says what it
+  // found. summary.json does: it records the cache hit and how many findings the earlier review had.
+  for (const entry of summary?.agents ?? []) {
+    if (agents[entry.id] && entry.cache?.hit) agents[entry.id].reused = entry.cache.findings ?? 0;
+  }
   const feed = [];
   const waiting = [];
   const severities = { critical: 0, design: 0, minor: 0 };
@@ -126,6 +132,9 @@ export function buildState(events, summary, { now = Date.now() } = {}) {
           if (event.label === 'no changes') {
             say(id, 'done', NO_CHANGES);
             note(event, id, NO_CHANGES);
+          } else if (agent.reused !== null) {
+            say(id, 'done', REUSED);
+            note(event, id, REUSED);
           } else {
             say(id, agent.leads > 0 ? 'ready' : 'done', voice.scanDone(agent.leads));
             note(event, id, voice.scanDone(agent.leads));
@@ -201,7 +210,8 @@ export function buildState(events, summary, { now = Date.now() } = {}) {
   }));
   const last = events.length ? at(events.at(-1)) : undefined;
   const first = summary?.agents?.find((entry) => entry.scannedCount !== undefined) ?? summary?.agents?.[0];
-  const findings = CREW.reduce((sum, id) => sum + (agents[id].saved ?? agents[id].findings), 0);
+  const reused = CREW.reduce((sum, id) => sum + (agents[id].reused ?? 0), 0);
+  const findings = CREW.reduce((sum, id) => sum + (agents[id].saved ?? agents[id].findings ?? 0) + (agents[id].reused ?? 0), 0);
 
   return {
     v: 1,
@@ -220,6 +230,7 @@ export function buildState(events, summary, { now = Date.now() } = {}) {
       files: first?.scannedCount ?? first?.changedCount ?? null,
       leads: CREW.some((id) => agents[id].leads !== null) ? CREW.reduce((sum, id) => sum + (agents[id].leads ?? 0), 0) : null,
       findings,
+      reused,
       needs: needsDecision ?? severities.critical + severities.design,
       needsFinal: needsDecision !== undefined,
     },
@@ -291,6 +302,30 @@ export function writeDashboard({ swagDir, now = Date.now(), pageOnly = false } =
 }
 
 /**
+ * Deletes `<file>.<pid>.tmp` leftovers from a write that was cut off (a crash between writing and renaming). Only files
+ * older than `maxAgeMs` go, so a write that is happening right now is never touched. Never throws.
+ */
+export function cleanStaleTemps(swagDir, { now = Date.now(), maxAgeMs = 60 * 1000 } = {}) {
+  const removed = [];
+  try {
+    for (const name of readdirSync(swagDir)) {
+      if (!/^(dashboard\.html|dashboard-data\.js)\.\d+\.tmp$/.test(name)) continue;
+      try {
+        if (now - statSync(join(swagDir, name)).mtimeMs > maxAgeMs) {
+          rmSync(join(swagDir, name), { force: true });
+          removed.push(name);
+        }
+      } catch {
+        // gone already, or locked: leave it for next time
+      }
+    }
+  } catch {
+    // no folder yet
+  }
+  return removed;
+}
+
+/**
  * Keeps the data file fresh until the run ends (or `maxIdleMs` passes with no new event). Returns a promise that resolves
  * with the final state. `intervalMs` is how often the log is re-read.
  */
@@ -301,10 +336,16 @@ export function watchDashboard({ swagDir, intervalMs = 1500, maxIdleMs = 30 * 60
     // A finished run left over from before this watcher started is not the run we are waiting for.
     const before = buildState(readEvents(join(swagDir, 'run')), undefined);
     const isLeftover = (state) => (before.status === 'done' || before.status === 'error') && state.startedAt === before.startedAt && state.endedAt === before.endedAt;
+    // The page file embeds the state it was written with, and a page that embeds a finished run never polls again. So when
+    // the run changes (a new start time, or the status moves), the page file is rewritten too, not only the data file.
+    let pageKey = `${before.status}|${before.startedAt}`;
     const tick = () => {
       let state;
       try {
-        ({ state } = writeDashboard({ swagDir, pageOnly: true }));
+        const current = buildState(readEvents(join(swagDir, 'run')), undefined);
+        const key = `${current.status}|${current.startedAt}`;
+        ({ state } = writeDashboard({ swagDir, pageOnly: key === pageKey }));
+        pageKey = key;
       } catch {
         // A failed write must never end the watcher: the page shows "not updating" and the next tick tries again.
         setTimeout(tick, intervalMs);
@@ -332,6 +373,7 @@ export function watchDashboard({ swagDir, intervalMs = 1500, maxIdleMs = 30 * 60
       setTimeout(tick, intervalMs);
     };
     // The first write is a full page, so the file exists before the user opens it.
+    cleanStaleTemps(swagDir);
     try {
       writeDashboard({ swagDir });
     } catch {

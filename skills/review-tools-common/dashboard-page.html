@@ -296,7 +296,7 @@ body { margin: 0; }
   <section class="stats" aria-label="Counts so far">
     <div class="stat"><span>Files scanned</span><b id="s-files">–</b></div>
     <div class="stat"><span>Leads from scripts</span><b id="s-leads">–</b></div>
-    <div class="stat"><span>Findings</span><b id="s-findings">0</b></div>
+    <div class="stat"><span id="s-findings-label">Findings</span><b id="s-findings">0</b></div>
     <div class="stat warn"><span id="s-need-label">Need your call</span><b id="s-need">0</b></div>
     <div class="stat"><span>Elapsed</span><b id="s-time">00:00</b></div>
   </section>
@@ -322,7 +322,7 @@ body { margin: 0; }
   var TILE = { analyst: 't-an', inspector: 't-in', 'security-guard': 't-gu' };
   var STATE_LABEL = { idle: 'Standing by', working: 'Working', ready: 'Leads ready', alert: 'Waiting for you', error: 'Hit a problem', done: 'Done' };
   var PILL = { waiting: ['Waiting', 'waiting'], live: ['Live', ''], done: ['Finished', 'done'], error: ['Stopped', 'error'], stale: ['Not updating', 'stale'] };
-  var STALE_AFTER_MS = 20000, POLL_MS = 2000, TOAST_MS = 8000, TOAST_MAX_AGE_MS = 60000;
+  var STALE_AFTER_MS = 20000, POLL_MS = 2000, DONE_POLL_MS = 10000, TOAST_MS = 8000, TOAST_MAX_AGE_MS = 60000;
   var $ = function (id) { return document.getElementById(id); };
   var data = /*__SWAG_SCAN_DATA__*/null;
   var drawnFeed = 0, shownToasts = {}, built = false, timer;
@@ -371,6 +371,7 @@ body { margin: 0; }
     $('s-files').textContent = k.files == null ? '–' : k.files;
     $('s-leads').textContent = k.leads == null ? '–' : k.leads;
     $('s-findings').textContent = k.findings;
+    $('s-findings-label').textContent = k.reused ? 'Findings (' + k.reused + ' reused)' : 'Findings';
     $('s-need').textContent = k.needs;
     $('s-need-label').textContent = k.needsFinal ? 'Need your call' : 'Need your call so far';
     // A page that stopped getting updates freezes its clock at the last update, so it does not look like it is still working.
@@ -414,11 +415,18 @@ body { margin: 0; }
   function poll() {
     var s = document.createElement('script');
     s.src = 'dashboard-data.js?t=' + Date.now();
-    s.onload = function () { if (window.SWAG_SCAN_DATA) { data = window.SWAG_SCAN_DATA; render(); } s.remove(); schedule(); };
+    s.onload = function () {
+      var next = window.SWAG_SCAN_DATA;
+      // A finished page only adopts data from a different run, so an old tab moves on when a new run starts.
+      if (next && (isOver(data) ? next.startedAt !== data.startedAt || !isOver(next) : true)) { data = next; render(); }
+      s.remove(); schedule();
+    };
     s.onerror = function () { s.remove(); schedule(); };
     document.head.appendChild(s);
   }
-  function schedule() { clearTimeout(timer); if (data.status === 'live' || data.status === 'waiting') timer = setTimeout(poll, POLL_MS); }
+  function isOver(d) { return d.status === 'done' || d.status === 'error'; }
+  // Live and waiting pages poll quickly. A finished page keeps a slow poll so it notices a newer run and picks it up.
+  function schedule() { clearTimeout(timer); timer = setTimeout(poll, isOver(data) ? DONE_POLL_MS : POLL_MS); }
 
   render(); schedule();
   setInterval(function () { if (data.status === 'live') render(); }, 1000); // keeps the clock and the "not updating" notice current

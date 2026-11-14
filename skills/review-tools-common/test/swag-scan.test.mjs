@@ -183,3 +183,25 @@ test('the summary shows the branch-diff versus untracked split and any untracked
   const clean = renderSummary({ branch: 'feature', base: { ref: 'main' }, modelTokens: 0, agents: [{ ...agent, untrackedCount: 0, warnings: [] }], runDir: '.swag-scan/run' });
   assert.doesNotMatch(clean, /untracked|Warning/);
 });
+
+test('an explicit --ticket path that does not exist stops the run and suggests the real path', (context) => {
+  const repo = fixture(context);
+  const tickets = mkdtempSync(join(tmpdir(), 'swag-tickets-'));
+  context.after(() => rmSync(tickets, { recursive: true, force: true }));
+  mkdirSync(join(tickets, 'sprint-4'), { recursive: true });
+  writeFileSync(join(tickets, 'sprint-4', 'PROJ-456.md'), '## Acceptance Criteria\n\n- One thing\n');
+  const typo = join(tickets, 'PROJ-456.md');
+  assert.throws(() => runScan({ repo, ticket: typo }), (error) => {
+    assert.ok(error instanceof PlainError);
+    assert.match(error.message, /Ticket file not found/);
+    assert.match(error.message, /did not start/);
+    assert.ok(error.message.includes(join(tickets, 'sprint-4', 'PROJ-456.md')), 'suggests the real file');
+    return true;
+  });
+});
+
+test('an explicit --ticket ID that cannot be found also stops the run, but a branch-name ticket stays a note', (context) => {
+  const repo = fixture(context);
+  assert.throws(() => runScan({ repo, ticket: 'PROJ-999', ticketDir: join(repo, 'nowhere') }), PlainError);
+  assert.doesNotThrow(() => runScan({ repo, ticketDir: join(repo, 'nowhere') }));
+});
