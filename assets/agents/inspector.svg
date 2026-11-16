@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="400" height="400">
+  <defs><clipPath id="disc"><circle cx="100" cy="100" r="100"/></clipPath></defs>
+    <g clip-path="url(#disc)">
+      <rect width="200" height="200" fill="#E7C9A5"/>
+      <!-- work shirt, hi-vis vest with reflective bands -->
+      <path d="M16 200 Q16 152 70 145 L130 145 Q184 152 184 200 Z" fill="#6F86A3"/>
+      <rect x="85" y="118" width="30" height="34" fill="#D2A07C"/>
+      <path d="M84 144 L100 164 L90 146 Z" fill="#8FA6C0"/>
+      <path d="M116 144 L100 164 L110 146 Z" fill="#8FA6C0"/>
+      <path d="M22 200 Q24 158 72 146 L90 146 L97 200 Z" fill="#E8742A"/>
+      <path d="M178 200 Q176 158 128 146 L110 146 L103 200 Z" fill="#E8742A"/>
+      <path d="M23.5 178 L96 178 L96.4 186 L22.6 186 Z" fill="#F4F1E6"/>
+      <path d="M176.5 178 L104 178 L103.6 186 L177.4 186 Z" fill="#F4F1E6"/>
+      <!-- pencil behind the ear -->
+      <g transform="rotate(30 143 100)">
+        <rect x="140" y="76" width="6" height="28" fill="#F2C14E"/>
+        <rect x="140" y="70" width="6" height="6" fill="#B8C0CC"/>
+        <rect x="140" y="65" width="6" height="6" rx="2" fill="#E58A8A"/>
+      </g>
+      <!-- head -->
+      <ellipse cx="59" cy="98" rx="6" ry="11" fill="#D2A07C"/>
+      <ellipse cx="141" cy="98" rx="6" ry="11" fill="#D2A07C"/>
+      <ellipse cx="100" cy="92" rx="41" ry="47" fill="#DDAE8B"/>
+      <!-- grey hair at the sides -->
+      <path d="M62 96 Q50 82 58 68 Q68 68 68 78 Q66 86 66 98 Z" fill="#CFCFD2"/>
+      <path d="M138 96 Q150 82 142 68 Q132 68 132 78 Q134 86 134 98 Z" fill="#CFCFD2"/>
+      <!-- bushy brows -->
+      <path d="M71 81 Q82 72 95 79" stroke="#C4C4C8" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M105 79 Q118 72 129 81" stroke="#C4C4C8" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <!-- kind, smiling eyes -->
+      <path d="M73 94 Q82 86 91 94" stroke="#3A2A22" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M109 94 Q118 86 127 94" stroke="#3A2A22" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M68 92 L64 89 M68 97 L63 98 M132 92 L136 89 M132 97 L137 98" stroke="#B98A68" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="75" cy="107" r="7" fill="#D98A7A" opacity=".35"/>
+      <circle cx="125" cy="107" r="7" fill="#D98A7A" opacity=".35"/>
+      <path d="M100 96 Q94 109 102 111" stroke="#B98A68" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+      <!-- mustache and smile -->
+      <path d="M74 115 Q88 105 100 111 Q112 105 126 115 Q116 125 100 116 Q84 125 74 115 Z" fill="#D9D9DC"/>
+      <path d="M90 127 Q100 134 110 127" stroke="#8A4A3A" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <!-- hard hat -->
+      <path d="M52 64 Q52 24 100 22 Q148 24 148 64 Z" fill="#F2B632"/>
+      <path d="M90 26 Q100 22 110 26 L110 64 L90 64 Z" fill="#E0A21C"/>
+      <path d="M66 54 Q70 38 84 32" stroke="#F8D067" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M44 64 Q100 54 156 64 Q156 73 100 73 Q44 73 44 64 Z" fill="#E0A21C"/>
+      <path d="M50 66 Q100 58 150 66" stroke="#F8D067" stroke-width="2" fill="none" stroke-linecap="round" opacity=".7"/>
+    </g>
+  </svg>

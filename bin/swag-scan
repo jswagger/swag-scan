@@ -1,0 +1,4 @@
+#!/bin/sh
+# Claude Code puts the plugin's bin/ folder on the Bash PATH, so `swag-scan run ...` works as a bare command.
+# This is the one fixed command shape: a single permission rule, Bash(swag-scan *), covers it.
+exec node "$(dirname "$0")/../skills/review-tools-common/swag-scan.mjs" "$@"

@@ -1,0 +1,43 @@
+{
+  "models": {
+    "claude": { "basic": "haiku", "advanced": "sonnet" },
+    "copilot": { "basic": null, "advanced": null }
+  },
+  "diff": {
+    "baseRef": "auto",
+    "untrackedMaxBytes": 100000
+  },
+  "scan": {
+    "exclude": [
+      "package-lock.json",
+      "yarn.lock",
+      "pnpm-lock.yaml",
+      "**/testdata/**",
+      "**/locales/**/*.json",
+      "**/locale/**/*.json",
+      "**/i18n/**/*.json",
+      "**/translations/**/*.json",
+      "**/bin/**",
+      "**/obj/**",
+      "*.Designer.cs",
+      "*.md",
+      "*.tsbuildinfo",
+      "*.snap"
+    ],
+    "testFiles": {
+      "mode": "lower-confidence",
+      "patterns": [
+        "*.test.*",
+        "*.spec.*",
+        "**/__tests__/**",
+        "**/test/**",
+        "**/tests/**"
+      ]
+    },
+    "projectStack": "backend"
+  },
+  "scope": {
+    "maxRelatedFiles": 5,
+    "maxRelationshipHops": 1
+  }
+}

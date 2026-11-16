@@ -1,0 +1,14 @@
+{
+  "name": "swag-scan",
+  "description": "Swag Scan review skills for coding agents",
+  "owner": { "name": "Jeremy Swagger" },
+  "plugins": [
+    {
+      "name": "swag-scan",
+      "source": "./",
+      "description": "Bug Hunter, Code Sweeper, and Security Auditor review skills.",
+      "version": "0.1.0",
+      "category": "code-review"
+    }
+  ]
+}

@@ -1,0 +1,379 @@
+<title>Swag Scan Crew</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@600;700;800&display=swap">
+<style>
+/* Layout: logo header like the banner, then three columns, each an agent card with its tool belt underneath, then a mock report */
+:root {
+  --bg: #F7F6F2;
+  --surface: #FFFFFF;
+  --fg: #29384B;
+  --muted: #3F4D60;
+  --line: #D6CFBF;
+  --accent: #8A5A2B;
+  --copper: #C58A50;
+  --belt: #ECE7DC;
+  --built-bg: #29384B;
+  --built-fg: #FFFFFF;
+  --built-sub: #D6DCE6;
+  --planned-line: #7A6A55;
+  --chip: #ECE7DC;
+  --display: 'Montserrat', system-ui, sans-serif;
+  --body: 'Inter', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1A2230; --surface: #232E40; --fg: #ECE7DC; --muted: #B3BDCD; --line: #3A475C; --accent: #E7C9A5; --copper: #D99A5E;
+    --belt: #2B374B; --built-bg: #3B4B66; --built-fg: #FFFFFF; --built-sub: #D6DCE6; --planned-line: #8C97AB; --chip: #2F3C52; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1A2230; --surface: #232E40; --fg: #ECE7DC; --muted: #B3BDCD; --line: #3A475C; --accent: #E7C9A5; --copper: #D99A5E;
+  --belt: #2B374B; --built-bg: #3B4B66; --built-fg: #FFFFFF; --built-sub: #D6DCE6; --planned-line: #8C97AB; --chip: #2F3C52; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); line-height: 1.55;
+  padding-block: 48px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+.eyebrow { font: 600 13px/1.2 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.eyebrow.small { font-size: 11px; letter-spacing: .12em; }
+h1 { font: 800 clamp(30px, 5.4vw, 48px)/1.1 var(--display); margin: 12px 0 14px; text-wrap: balance; }
+h2 { font: 700 clamp(22px, 3.4vw, 28px)/1.2 var(--display); margin: 0; text-wrap: balance; }
+.hero { display: flex; gap: 48px; align-items: center; flex-wrap: wrap; }
+.logo { flex: 0 1 380px; background: #F7F6F2; border-radius: 20px; overflow: hidden; min-width: 0; }
+.logo img { display: block; width: 100%; height: auto; }
+.hero > div { flex: 1 1 380px; min-width: 0; }
+.lede { color: var(--muted); max-width: 62ch; margin: 0; font-size: 18px; }
+.sec { display: flex; flex-direction: column; gap: 6px; }
+.sec p { margin: 0; color: var(--muted); }
+.legend { display: flex; gap: 22px; flex-wrap: wrap; align-items: center; font-size: 14px; color: var(--muted); margin-top: 10px; }
+.legend span { display: flex; align-items: center; gap: 8px; }
+.sw { display: inline-block; width: 28px; height: 16px; border-radius: 4px; box-sizing: border-box; }
+.sw.built { background: var(--built-bg); }
+.sw.planned { background: var(--surface); border: 2px dashed var(--planned-line); }
+.crew { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); column-gap: 24px; row-gap: 14px; }
+.agent { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@supports (grid-template-rows: subgrid) { .agent { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 14px; } }
+.card { flex: 1; background: var(--surface); border: 2px solid var(--fg); border-radius: 14px; padding: 22px 20px 22px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.frame { position: relative; width: 100%; max-width: 190px; aspect-ratio: 1; margin: 0 auto 4px; border: 5px solid var(--fg); border-radius: 50%; padding: 5px; background: var(--surface); box-sizing: border-box; }
+.portrait { width: 100%; height: 100%; display: block; border-radius: 50%; }
+.badge { position: absolute; right: -6px; bottom: -6px; width: 46px; height: 46px; }
+.card h3 { font: 700 22px/1.2 var(--display); margin: 4px 0 4px; }
+.q { font-size: 14px; color: var(--muted); display: block; }
+.card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.card p.quote { color: var(--fg); font-weight: 500; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tags span { background: var(--chip); border-radius: 999px; padding: 4px 10px; font-size: 12px; }
+.belt { background: var(--belt); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.beltlabel { font: 600 11px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.tool { display: flex; gap: 12px; align-items: center; border-radius: 10px; padding: 10px 12px; min-width: 0; box-sizing: border-box; }
+.tool.built { background: var(--built-bg); color: var(--built-fg); }
+.tool.planned { background: var(--surface); border: 2px dashed var(--planned-line); padding: 8px 10px; }
+.tool > div:last-child { min-width: 0; }
+.tool b { display: block; font: 700 14.5px/1.25 var(--display); }
+.tool p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.4; }
+.tool.built p { color: var(--built-sub); }
+.tool.planned p { color: var(--muted); }
+.status { display: block; font: 600 10px/1 var(--body); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 4px; }
+.tool.built .status { color: #E7C9A5; }
+.tool.planned .status { color: var(--accent); }
+.tile { flex: none; width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; }
+.tile svg { width: 34px; height: 34px; }
+.analyst-tile { background: #C9D3DF; color: #29384B; }
+.inspector-tile { background: #E7C9A5; color: #29384B; }
+.guard-tile { background: #29384B; color: #ECE7DC; outline: 1.5px solid #6B7A90; outline-offset: -1.5px; }
+.report { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.report h3 { font: 600 12px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; margin: 0; color: var(--muted); }
+.line { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.line svg { flex: none; width: 42px; height: 42px; border-radius: 50%; box-shadow: 0 0 0 2px var(--fg); }
+.line b { font-family: var(--display); font-size: 13px; display: block; }
+.line span { font-size: 14.5px; color: var(--muted); }
+.line div { min-width: 0; }
+.sizes { display: flex; gap: 14px; align-items: flex-end; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.sizes small { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.sizes svg { border-radius: 50%; display: block; }
+footer { border-top: 1px solid var(--line); padding-top: 20px; display: flex; gap: 12px 28px; align-items: baseline; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+.mark { font: 800 18px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; color: var(--fg); }
+.mark i { font-style: normal; color: var(--copper); }
+footer p { margin: 0; flex: 1 1 360px; min-width: 0; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <clipPath id="disc"><circle cx="100" cy="100" r="100"/></clipPath>
+  </defs>
+
+  <!-- Analyst: the nerd -->
+  <symbol id="analyst" viewBox="0 0 200 200">
+    <g clip-path="url(#disc)">
+      <rect width="200" height="200" fill="#C9D3DF"/>
+      <path d="M18 200 Q18 152 70 145 L130 145 Q182 152 182 200 Z" fill="#F7F6F2"/>
+      <rect x="86" y="118" width="28" height="34" fill="#E3B48E"/>
+      <path d="M86 140 L100 160 L114 140 L114 150 L100 166 L86 150 Z" fill="#E3B48E"/>
+      <path d="M82 144 L100 164 L90 150 Z" fill="#DCE2EA"/>
+      <path d="M118 144 L100 164 L110 150 Z" fill="#DCE2EA"/>
+      <path d="M96 156 L104 156 L107 164 L104 200 L96 200 L93 164 Z" fill="#29384B"/>
+      <!-- pocket protector with pens -->
+      <rect x="127" y="168" width="26" height="32" rx="3" fill="#E4E9F0" stroke="#B9C4D3" stroke-width="1.5"/>
+      <rect x="132" y="160" width="4" height="14" rx="1.5" fill="#2F6FB5"/>
+      <rect x="139" y="156" width="4" height="18" rx="1.5" fill="#B5342E"/>
+      <rect x="146" y="162" width="4" height="12" rx="1.5" fill="#1B2230"/>
+      <!-- head -->
+      <ellipse cx="60" cy="98" rx="6" ry="10" fill="#EFC5A0"/>
+      <ellipse cx="140" cy="98" rx="6" ry="10" fill="#EFC5A0"/>
+      <ellipse cx="100" cy="92" rx="40" ry="46" fill="#F0C8A4"/>
+      <!-- hair, side part -->
+      <path d="M59 88 Q50 44 100 42 Q150 44 141 88 Q138 66 120 62 Q100 72 78 62 Q62 70 59 88 Z" fill="#5A3B28"/>
+      <path d="M78 62 Q92 50 112 54" stroke="#7A5339" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <!-- brows -->
+      <path d="M70 74 Q80 69 92 73" stroke="#5A3B28" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M108 73 Q120 69 130 74" stroke="#5A3B28" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <!-- eyes -->
+      <circle cx="81" cy="93" r="4" fill="#1B2230"/>
+      <circle cx="119" cy="93" r="4" fill="#1B2230"/>
+      <circle cx="82.4" cy="91.6" r="1.3" fill="#fff"/>
+      <circle cx="120.4" cy="91.6" r="1.3" fill="#fff"/>
+      <!-- thick glasses -->
+      <rect x="63" y="79" width="36" height="28" rx="10" fill="#fff" fill-opacity=".35" stroke="#1B2230" stroke-width="5.5"/>
+      <rect x="101" y="79" width="36" height="28" rx="10" fill="#fff" fill-opacity=".35" stroke="#1B2230" stroke-width="5.5"/>
+      <path d="M99 90 Q100 87 101 90" stroke="#1B2230" stroke-width="5" fill="none"/>
+      <path d="M63 90 L58 90 M137 90 L142 90" stroke="#1B2230" stroke-width="4" stroke-linecap="round"/>
+      <path d="M68 85 L74 83" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+      <path d="M106 85 L112 83" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+      <!-- nose and mouth -->
+      <path d="M100 98 Q97 108 102 109" stroke="#D49F7C" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M90 123 Q100 130 110 123" stroke="#9A5A44" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </g>
+  </symbol>
+
+  <!-- Inspector: the old building inspector -->
+  <symbol id="inspector" viewBox="0 0 200 200">
+    <g clip-path="url(#disc)">
+      <rect width="200" height="200" fill="#E7C9A5"/>
+      <!-- work shirt, hi-vis vest with reflective bands -->
+      <path d="M16 200 Q16 152 70 145 L130 145 Q184 152 184 200 Z" fill="#6F86A3"/>
+      <rect x="85" y="118" width="30" height="34" fill="#D2A07C"/>
+      <path d="M84 144 L100 164 L90 146 Z" fill="#8FA6C0"/>
+      <path d="M116 144 L100 164 L110 146 Z" fill="#8FA6C0"/>
+      <path d="M22 200 Q24 158 72 146 L90 146 L97 200 Z" fill="#E8742A"/>
+      <path d="M178 200 Q176 158 128 146 L110 146 L103 200 Z" fill="#E8742A"/>
+      <path d="M23.5 178 L96 178 L96.4 186 L22.6 186 Z" fill="#F4F1E6"/>
+      <path d="M176.5 178 L104 178 L103.6 186 L177.4 186 Z" fill="#F4F1E6"/>
+      <!-- pencil behind the ear -->
+      <g transform="rotate(30 143 100)">
+        <rect x="140" y="76" width="6" height="28" fill="#F2C14E"/>
+        <rect x="140" y="70" width="6" height="6" fill="#B8C0CC"/>
+        <rect x="140" y="65" width="6" height="6" rx="2" fill="#E58A8A"/>
+      </g>
+      <!-- head -->
+      <ellipse cx="59" cy="98" rx="6" ry="11" fill="#D2A07C"/>
+      <ellipse cx="141" cy="98" rx="6" ry="11" fill="#D2A07C"/>
+      <ellipse cx="100" cy="92" rx="41" ry="47" fill="#DDAE8B"/>
+      <!-- grey hair at the sides -->
+      <path d="M62 96 Q50 82 58 68 Q68 68 68 78 Q66 86 66 98 Z" fill="#CFCFD2"/>
+      <path d="M138 96 Q150 82 142 68 Q132 68 132 78 Q134 86 134 98 Z" fill="#CFCFD2"/>
+      <!-- bushy brows -->
+      <path d="M71 81 Q82 72 95 79" stroke="#C4C4C8" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="M105 79 Q118 72 129 81" stroke="#C4C4C8" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <!-- kind, smiling eyes -->
+      <path d="M73 94 Q82 86 91 94" stroke="#3A2A22" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M109 94 Q118 86 127 94" stroke="#3A2A22" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M68 92 L64 89 M68 97 L63 98 M132 92 L136 89 M132 97 L137 98" stroke="#B98A68" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="75" cy="107" r="7" fill="#D98A7A" opacity=".35"/>
+      <circle cx="125" cy="107" r="7" fill="#D98A7A" opacity=".35"/>
+      <path d="M100 96 Q94 109 102 111" stroke="#B98A68" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+      <!-- mustache and smile -->
+      <path d="M74 115 Q88 105 100 111 Q112 105 126 115 Q116 125 100 116 Q84 125 74 115 Z" fill="#D9D9DC"/>
+      <path d="M90 127 Q100 134 110 127" stroke="#8A4A3A" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <!-- hard hat -->
+      <path d="M52 64 Q52 24 100 22 Q148 24 148 64 Z" fill="#F2B632"/>
+      <path d="M90 26 Q100 22 110 26 L110 64 L90 64 Z" fill="#E0A21C"/>
+      <path d="M66 54 Q70 38 84 32" stroke="#F8D067" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M44 64 Q100 54 156 64 Q156 73 100 73 Q44 73 44 64 Z" fill="#E0A21C"/>
+      <path d="M50 66 Q100 58 150 66" stroke="#F8D067" stroke-width="2" fill="none" stroke-linecap="round" opacity=".7"/>
+    </g>
+  </symbol>
+
+  <!-- Security Guard: serious, sunglasses, suit -->
+  <symbol id="guard" viewBox="0 0 200 200">
+    <g clip-path="url(#disc)">
+      <rect width="200" height="200" fill="#29384B"/>
+      <path d="M14 200 Q14 152 68 145 L132 145 Q186 152 186 200 Z" fill="#12171F"/>
+      <rect x="86" y="118" width="28" height="34" fill="#C99A78"/>
+      <path d="M82 146 L100 182 L118 146 L118 200 L82 200 Z" fill="#F7F6F2"/>
+      <path d="M68 146 L96 200 L56 200 Z" fill="#1C2330"/>
+      <path d="M132 146 L104 200 L144 200 Z" fill="#1C2330"/>
+      <path d="M96 152 L104 152 L108 182 L100 192 L92 182 Z" fill="#6B2D3A"/>
+      <path d="M92 146 L100 156 L108 146 L104 144 L96 144 Z" fill="#6B2D3A"/>
+      <!-- head -->
+      <ellipse cx="60" cy="98" rx="6" ry="10" fill="#C99A78"/>
+      <ellipse cx="140" cy="98" rx="6" ry="10" fill="#C99A78"/>
+      <path d="M60 80 Q60 50 100 48 Q140 50 140 80 L140 104 Q140 138 100 140 Q60 138 60 104 Z" fill="#DDB08C"/>
+      <!-- slicked-back hair -->
+      <path d="M58 90 Q54 46 100 42 Q146 46 142 90 Q138 66 100 62 Q62 66 58 90 Z" fill="#14171E"/>
+      <path d="M72 56 Q98 44 126 56" stroke="#3B4354" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M68 66 Q98 52 134 68" stroke="#2A303C" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <!-- sunglasses -->
+      <path d="M64 82 L136 82 L136 92 Q136 104 124 104 L112 104 Q104 104 103 94 L97 94 Q96 104 88 104 L76 104 Q64 104 64 92 Z" fill="#0B0D12"/>
+      <path d="M72 87 L82 87 M110 87 L120 87" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".28"/>
+      <path d="M64 86 L58 88 M136 86 L142 88" stroke="#0B0D12" stroke-width="3.5" stroke-linecap="round"/>
+      <!-- earpiece -->
+      <path d="M58 104 Q50 128 74 148" stroke="#8B93A3" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+      <circle cx="58" cy="102" r="3" fill="#8B93A3"/>
+      <!-- nose, mouth, jaw -->
+      <path d="M100 100 Q96 112 102 113" stroke="#B88A68" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      <path d="M88 124 L112 124" stroke="#7A4A3A" stroke-width="3.4" stroke-linecap="round"/>
+    </g>
+  </symbol>
+</svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Tool icons: 48 x 48, strokes use currentColor so each tile sets its own ink -->
+  <symbol id="t-bug" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="20" cy="20" r="12" fill="#fff" fill-opacity=".45"/><path d="M29 29 L41 41" stroke-width="5"/><ellipse cx="20" cy="21" rx="3.4" ry="4.4" fill="#E8742A" stroke="none"/><path d="M15 17 L17.5 19 M25 17 L22.5 19 M14.5 23 H17 M23 23 H25.5" stroke-width="1.8"/></g></symbol>
+  <symbol id="t-clip" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="10" y="8" width="28" height="34" rx="4" fill="#fff" fill-opacity=".45"/><rect x="17" y="4" width="14" height="8" rx="2.5" fill="#E8A53A"/><path d="M15 21 L18 24 L23 18 M27 21 H33 M15 32 L18 35 L23 29 M27 32 H33"/></g></symbol>
+  <symbol id="t-tube" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 28 H29 V32 Q29 42 24 42 Q19 42 19 32 Z" fill="#E8742A" stroke="none"/><path d="M19 6 V32 Q19 42 24 42 Q29 42 29 32 V6 M15 6 H33"/><circle cx="23" cy="34" r="1.6" fill="#fff" stroke="none"/><circle cx="26" cy="38" r="1.2" fill="#fff" stroke="none"/></g></symbol>
+  <symbol id="t-broom" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M37 5 L24 27" stroke-width="4"/><path d="M15 27 L31 32 L27 44 L8 40 Z" fill="#E8A53A"/><path d="M17 33 L15 41 M22 34 L20 42 M27 35 L25 43" stroke-width="1.8"/></g></symbol>
+  <symbol id="t-coins" viewBox="0 0 48 48"><g fill="#E8A53A" stroke="currentColor" stroke-width="3" stroke-linejoin="round"><path d="M10 32 V36 Q10 41 24 41 Q38 41 38 36 V32 Q38 37 24 37 Q10 37 10 32 Z"/><ellipse cx="24" cy="32" rx="14" ry="5"/><path d="M10 22 V26 Q10 31 24 31 Q38 31 38 26 V22 Q38 27 24 27 Q10 27 10 22 Z"/><ellipse cx="24" cy="22" rx="14" ry="5"/><path d="M10 12 V16 Q10 21 24 21 Q38 21 38 16 V12 Q38 17 24 17 Q10 17 10 12 Z"/><ellipse cx="24" cy="12" rx="14" ry="5"/></g></symbol>
+  <symbol id="t-tape" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="21" cy="24" r="15" fill="#E8A53A"/><circle cx="21" cy="24" r="6" fill="#fff" fill-opacity=".5"/><path d="M30 35 H44 V42 H27" fill="#fff" fill-opacity=".6"/><path d="M33 42 V38 M37 42 V39 M41 42 V38" stroke-width="2"/></g></symbol>
+  <symbol id="t-lock" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21 V15 Q15 6 24 6 Q33 6 33 15 V21"/><rect x="10" y="21" width="28" height="21" rx="4" fill="#E8A53A"/><circle cx="24" cy="30" r="3" fill="currentColor"/><path d="M24 32 V37"/></g></symbol>
+  <symbol id="t-box" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M24 5 L40 13 V33 L24 42 L8 33 V13 Z" fill="#E8A53A"/><path d="M8 13 L24 21 L40 13 M24 21 V42"/><path d="M16 9 L32 17" stroke-width="2.4"/></g></symbol>
+  <symbol id="t-key" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="24" r="9" fill="#E8A53A"/><circle cx="15" cy="24" r="3" fill="currentColor"/><path d="M24 24 H43 M35 24 V31 M42 24 V30"/></g></symbol>
+</svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Swag Scan monogram: hexagon with an S, echoing the logo -->
+  <symbol id="hexs" viewBox="0 0 100 100"><polygon points="50,4 91,27 91,73 50,96 9,73 9,27" fill="#29384B" stroke="#F7F6F2" stroke-width="6" stroke-linejoin="round"/><text x="50" y="66" text-anchor="middle" font-family="Montserrat, system-ui, sans-serif" font-weight="800" font-size="50" fill="#F7F6F2">S</text></symbol>
+</svg>
+<div class="wrap">
+  <header class="hero">
+    <div class="logo"><img src="../swagScanLogo.jpg" alt="Swag Scan logo: a magnifying glass around an S, with the words SwagScan, Automated Code Review"></div>
+    <div>
+      <div class="eyebrow">Meet the crew</div>
+      <h1>Three specialists, each with a face and a tool belt.</h1>
+      <p class="lede">Swag Scan hands every change to the Analyst, the Inspector and the Security Guard. Each one has a job, a way of looking at your code, and the tools to do it.</p>
+    </div>
+  </header>
+
+  <section class="sec" aria-label="Agents and tool belts">
+    <h2>Specialist agents, each with a tool belt</h2>
+    <p>Every agent carries the tools for its own job, like a tradesperson on a call.</p>
+    <div class="legend"><span><i class="sw built"></i>Available now</span><span><i class="sw planned"></i>Coming soon</span></div>
+  </section>
+
+  <section class="crew" aria-label="Agents">
+    <article class="agent">
+      <div class="card">
+        <div class="frame">
+          <svg class="portrait" viewBox="0 0 200 200" role="img" aria-label="Analyst: thick-rimmed glasses, side-parted brown hair, pens in a shirt pocket"><use href="#analyst"/></svg>
+          <svg class="badge" viewBox="0 0 100 100" aria-hidden="true"><use href="#hexs"/></svg>
+        </div>
+        <div><span class="eyebrow small">Agent · Coming soon</span><h3>Analyst</h3><span class="q">Does it work, and did it break anything?</span></div>
+        <p class="quote">"Eleven of twelve acceptance criteria are covered. Let's talk about the twelfth."</p>
+        <p>The stats person from the office down the hall. Counts everything, trusts the numbers, and reports what was and wasn't verified.</p>
+        <div class="tags"><span>Thick-rimmed glasses</span><span>Pocket protector</span><span>Tie</span></div>
+      </div>
+      <div class="belt">
+        <span class="beltlabel">Tool belt</span>
+        <div class="tool built">
+          <div class="tile analyst-tile"><svg aria-hidden="true"><use href="#t-bug"/></svg></div>
+          <div><span class="status">Available now</span><b>Bug Hunter</b><p>Looks for bugs and regressions in the changed code.</p></div>
+        </div>
+        <div class="tool planned">
+          <div class="tile analyst-tile"><svg aria-hidden="true"><use href="#t-clip"/></svg></div>
+          <div><span class="status">Coming soon · name not final</span><b>Acceptance Checker</b><p>Checks the change against what the ticket asked for.</p></div>
+        </div>
+        <div class="tool planned">
+          <div class="tile analyst-tile"><svg aria-hidden="true"><use href="#t-tube"/></svg></div>
+          <div><span class="status">Coming soon · name not final</span><b>Test Runner</b><p>Runs the tests that matter and reports passes, failures and gaps.</p></div>
+        </div>
+      </div>
+    </article>
+    <article class="agent">
+      <div class="card">
+        <div class="frame">
+          <svg class="portrait" viewBox="0 0 200 200" role="img" aria-label="Inspector: older man in a yellow hard hat and orange safety vest, grey mustache, kind smiling eyes, pencil behind his ear"><use href="#inspector"/></svg>
+          <svg class="badge" viewBox="0 0 100 100" aria-hidden="true"><use href="#hexs"/></svg>
+        </div>
+        <div><span class="eyebrow small">Agent · Coming soon</span><h3>Inspector</h3><span class="q">Was it built properly, with no loose ends?</span></div>
+        <p class="quote">"Everything is built to spec except one corner. Someone cut it."</p>
+        <p>The old, wise one, with a clipboard mindset. Kind and patient, but nothing leaves the site with a loose end, a cut corner or an inconsistency.</p>
+        <div class="tags"><span>Hard hat</span><span>Pencil behind the ear</span><span>Kind eyes</span><span>Mustache</span></div>
+      </div>
+      <div class="belt">
+        <span class="beltlabel">Tool belt</span>
+        <div class="tool built">
+          <div class="tile inspector-tile"><svg aria-hidden="true"><use href="#t-broom"/></svg></div>
+          <div><span class="status">Available now</span><b>Code Sweeper</b><p>Sweeps up unclean code, dead code and oversized functions, and fixes the clear cases itself.</p></div>
+        </div>
+        <div class="tool planned">
+          <div class="tile inspector-tile"><svg aria-hidden="true"><use href="#t-coins"/></svg></div>
+          <div><span class="status">Coming soon</span><b>Debt Collector</b><p>Makes sure technical debt gets paid down, not added.</p></div>
+        </div>
+        <div class="tool planned">
+          <div class="tile inspector-tile"><svg aria-hidden="true"><use href="#t-tape"/></svg></div>
+          <div><span class="status">Coming soon</span><b>Test Tailor</b><p>Measures unit tests for fit, so each one earns its place.</p></div>
+        </div>
+      </div>
+    </article>
+    <article class="agent">
+      <div class="card">
+        <div class="frame">
+          <svg class="portrait" viewBox="0 0 200 200" role="img" aria-label="Security Guard: serious man in a dark suit with slicked-back hair and sunglasses"><use href="#guard"/></svg>
+          <svg class="badge" viewBox="0 0 100 100" aria-hidden="true"><use href="#hexs"/></svg>
+        </div>
+        <div><span class="eyebrow small">Agent · Coming soon</span><h3>Security Guard</h3><span class="q">Is it safe to ship?</span></div>
+        <p class="quote">"Found a key in that file. Rotate it before anything else."</p>
+        <p>Few words, never takes the sunglasses off. Looks at every door, window and dependency, and flags what shouldn't be there.</p>
+        <div class="tags"><span>Sunglasses</span><span>Slicked-back hair</span><span>Earpiece</span></div>
+      </div>
+      <div class="belt">
+        <span class="beltlabel">Tool belt</span>
+        <div class="tool built">
+          <div class="tile guard-tile"><svg aria-hidden="true"><use href="#t-lock"/></svg></div>
+          <div><span class="status">Available now</span><b>Security Auditor</b><p>Finds vulnerabilities and risky patterns in the changed code.</p></div>
+        </div>
+        <div class="tool planned">
+          <div class="tile guard-tile"><svg aria-hidden="true"><use href="#t-box"/></svg></div>
+          <div><span class="status">Coming soon · name not final</span><b>Dependency Checker</b><p>Checks added or bumped packages and lockfile changes.</p></div>
+        </div>
+        <div class="tool planned">
+          <div class="tile guard-tile"><svg aria-hidden="true"><use href="#t-key"/></svg></div>
+          <div><span class="status">Coming soon · name not final</span><b>Permissions Reviewer</b><p>Checks that access is no broader than the change needs.</p></div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="report" aria-label="Avatars in use">
+    <h3>In a scan report</h3>
+    <div class="line">
+      <svg viewBox="0 0 200 200" aria-hidden="true"><use href="#guard"/></svg>
+      <div><b>Security Guard</b><span>1 hardcoded secret in config.py. Rotate it, then rerun.</span></div>
+    </div>
+    <div class="line">
+      <svg viewBox="0 0 200 200" aria-hidden="true"><use href="#analyst"/></svg>
+      <div><b>Analyst</b><span>48 tests passed, 2 failed. Coverage on the changed lines is 91%.</span></div>
+    </div>
+    <div class="line">
+      <svg viewBox="0 0 200 200" aria-hidden="true"><use href="#inspector"/></svg>
+      <div><b>Inspector</b><span>Found a loose end: a TODO with no owner, and two helpers that name the same thing differently.</span></div>
+    </div>
+    <div class="sizes" aria-label="Sizes">
+      <svg width="64" height="64" viewBox="0 0 200 200" aria-hidden="true"><use href="#analyst"/></svg>
+      <svg width="64" height="64" viewBox="0 0 200 200" aria-hidden="true"><use href="#inspector"/></svg>
+      <svg width="64" height="64" viewBox="0 0 200 200" aria-hidden="true"><use href="#guard"/></svg>
+      <svg width="32" height="32" viewBox="0 0 200 200" aria-hidden="true"><use href="#analyst"/></svg>
+      <svg width="32" height="32" viewBox="0 0 200 200" aria-hidden="true"><use href="#inspector"/></svg>
+      <svg width="32" height="32" viewBox="0 0 200 200" aria-hidden="true"><use href="#guard"/></svg>
+      <svg width="20" height="20" viewBox="0 0 200 200" aria-hidden="true"><use href="#analyst"/></svg>
+      <svg width="20" height="20" viewBox="0 0 200 200" aria-hidden="true"><use href="#inspector"/></svg>
+      <svg width="20" height="20" viewBox="0 0 200 200" aria-hidden="true"><use href="#guard"/></svg>
+      <small>64, 32 and 20 px</small>
+    </div>
+  </section>
+
+  <footer>
+    <span class="mark">Swag<i>Scan</i></span>
+    <p>Bug Hunter, Code Sweeper and Security Auditor are available now for Claude Code and GitHub Copilot in VS Code. The agents and the other tools shown as coming soon are on the roadmap and not yet built.</p>
+  </footer>
+</div>

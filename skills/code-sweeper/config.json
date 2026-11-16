@@ -1,0 +1,52 @@
+{
+	"diff": {
+		"baseRef": "auto",
+		"untrackedMaxBytes": 100000
+	},
+	"scan": {
+		"exclude": [
+			"package-lock.json",
+			"yarn.lock",
+			"pnpm-lock.yaml",
+			"*.md",
+			"*.txt",
+			"*.json",
+			"*.sqlite*",
+			"*.db",
+			"*.csv",
+			"*.tsv",
+			"*.xml",
+			"*.yaml",
+			"*.yml",
+			"*.toml",
+			"*.tsbuildinfo",
+			"*.d.ts",
+			"config/**/*.js",
+			"*.snap"
+		],
+		"testFiles": {
+			"patterns": [
+				"*.test.*",
+				"*.spec.*",
+				"**/__tests__/**",
+				"**/test/**",
+				"**/tests/**"
+			]
+		},
+		"thresholds": {
+			"maxLineLength": 120,
+			"maxCommentLength": 160,
+			"maxFunctionLines": 50,
+			"maxBooleanOperators": 3,
+			"maxFileLines": 500,
+			"minFileGrowthLines": 50,
+			"minFunctionChangeLines": 20
+		}
+	},
+	"autoFix": {
+		"enabled": true
+	},
+	"tests": {
+		"removeLowValue": false
+	}
+}
