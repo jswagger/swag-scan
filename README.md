@@ -37,14 +37,14 @@ Restart Claude Code after installing. The plugin has no pinned version: every co
 Check out the branch you want reviewed (committed, and ahead of the branch it will merge into), start Claude Code **inside that repository**, and run:
 
 ```
-/swag-scan:swag-scan [base-ref] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh] [--live]
+/swag-scan:swag-scan [base-ref] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh] [--no-live]
 ```
 
 - `base-ref`: the branch this one will merge into, such as `origin/main`. Leave it off and Swag Scan detects it.
 - `--ticket`: a ticket ID or file path, so the Analyst can check the change against acceptance criteria. See [Ticket files](#ticket-files).
 - `--agents`: run only some of the crew.
 - `--fresh`: ignore earlier results for this commit and review again.
-- `--live`: open a page that shows the crew at work. See [Live view](#live-view-dashboard).
+- `--no-live`: skip the live view. By default a page opens in your browser that shows the crew at work; see [Live view](#live-view-dashboard).
 
 The command first scans with scripts only (no model, no edits). It then starts the Analyst, Inspector and Security Guard in parallel for the ones that have leads. Each saves its findings with a line in its own voice, and a script builds one decisions-first report with no model tokens:
 
@@ -78,7 +78,7 @@ Swag Scan has been trial-run on Windows 11 with Node 22. One catch: if you use C
 - **Find it:** `%USERPROFILE%\.vscode\extensions\anthropic.claude-code-<version>-win32-x64\resources\native-binary\claude.exe`. The version is part of the folder name, so the path changes when the extension updates.
 - **PowerShell** needs the call operator: `& "<path>\claude.exe" --plugin-dir <swag-scan folder>`
 - **Command Prompt** takes the quoted path alone: `"<path>\claude.exe" --plugin-dir <swag-scan folder>`
-- **Then type the command inside Claude**, not in the shell: start the session first, and only then enter `/swag-scan:swag-scan <base> --ticket <path> --live`. Pasting both lines into the terminal runs the second one as a shell command and fails.
+- **Then type the command inside Claude**, not in the shell: start the session first, and only then enter `/swag-scan:swag-scan <base> --ticket <path>`. Pasting both lines into the terminal runs the second one as a shell command and fails.
 
 ## GitHub Copilot (experimental, not part of the plugin)
 
@@ -143,7 +143,7 @@ node skills/review-tools-common/swag-scan.mjs dashboard [--watch] [--open]
 
 - Writes `.swag-scan/dashboard.html` (self-contained: no network, no external fonts or scripts) and prints its path. With no scan yet it shows "Waiting for a scan".
 - `--watch` keeps the page's data fresh until the scan ends (start it before `run`, or while one is running). The page picks up changes without reloading, and says "Not updating" if the watcher stops.
-- `--open` opens the page in your browser. In Claude Code, `/swag-scan:swag-scan --live` starts the watcher and opens the page for you.
+- `--open` opens the page in your browser. In Claude Code, `/swag-scan:swag-scan` starts the watcher and opens the page for you unless you pass `--no-live`.
 - The page shows only what events carry: agent, step counts, file names and finding ids. It never tracks whether you approved a prompt.
 
 ### Run everything at once
