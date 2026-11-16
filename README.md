@@ -80,19 +80,6 @@ Swag Scan has been trial-run on Windows 11 with Node 22. One catch: if you use C
 - **Command Prompt** takes the quoted path alone: `"<path>\claude.exe" --plugin-dir <swag-scan folder>`
 - **Then type the command inside Claude**, not in the shell: start the session first, and only then enter `/swag-scan:swag-scan <base> --ticket <path> --live`. Pasting both lines into the terminal runs the second one as a shell command and fails.
 
-## Using a reviewer on its own
-
-The three skills behind the crew also work alone, and print their own report. In Claude Code they are namespaced:
-
-```
-/swag-scan:bug-hunter origin/main --ticket PROJ-123
-/swag-scan:code-sweeper origin/main
-/swag-scan:code-sweeper --no-fix          # review only, no edits
-/swag-scan:security-auditor origin/main
-```
-
-Leave off the base ref to use the configured default branch.
-
 ## GitHub Copilot (experimental, not part of the plugin)
 
 The three skills can be copied into a project for Copilot agent mode in VS Code. The crew, report and live view are Claude Code only for now, and Copilot support has had much less testing.
