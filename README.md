@@ -5,73 +5,105 @@
 # Swag Scan
 
 [![Tests](https://github.com/jswagger/swag-scan/actions/workflows/test.yml/badge.svg)](https://github.com/jswagger/swag-scan/actions/workflows/test.yml)
+![Status: beta](https://img.shields.io/badge/status-beta-orange)
 
-Pre-PR review skills for coding agents. Three focused reviewers that check only your change, never the whole repo.
+A pre-pull-request review for [Claude Code](https://claude.com/claude-code). Three reviewers look at your branch, and only your change, never the whole repo.
 
-| Skill | Question it answers | Report |
+> **Beta.** Swag Scan is still being tested on real projects and is not at 1.0. Expect rough edges, and expect behavior to change between updates. Findings are leads for a human to judge, not verdicts, and the report never says your code is "clean". Bug reports and odd behavior are welcome: [open an issue](https://github.com/jswagger/swag-scan/issues).
+
+## The crew
+
+| Reviewer | Question it answers | Built on |
 | --- | --- | --- |
-| [Bug Hunter](#bug-hunter) | What did this change break, and what new bugs did it add? | 🔴 Probable Bugs · 🟡 Suspicious · 🟢 Clean |
-| [Code Sweeper](#code-sweeper) | Is this change clean, simple, and well tested? | 🔴 Unclean · 🟡 Dusty · 🟢 Clean |
-| [Security Auditor](#security-auditor) | Does this change introduce vulnerabilities? | High Risk · Suspicious · Clean |
+| **Analyst** | Does the change work, and does it meet the ticket? | [Bug Hunter](#bug-hunter) |
+| **Inspector** | Is the change clean, simple and well tested? | [Code Sweeper](#code-sweeper) |
+| **Security Guard** | Does the change introduce vulnerabilities? | [Security Auditor](#security-auditor) |
 
-The skills don't overlap: Bug Hunter skips style and vulnerabilities, Code Sweeper skips bugs and security, and so on. Each one **collects** the diff, **scans** it with fast heuristics that flag *candidates*, then **reviews** each candidate in context. Matches are leads, not verdicts.
+The reviewers don't overlap: the Analyst skips style and vulnerabilities, the Inspector skips bugs and security, and so on. Scripts go first: they collect the diff and flag candidates with fast heuristics, using no model. A reviewer only starts when its scripts found something to look at, and then judges each lead in context.
 
 ## Install
 
-**Claude Code**
+You need [Claude Code](https://claude.com/claude-code), Node 22 or 24, and git. There are no other dependencies.
 
 ```
 /plugin marketplace add jswagger/swag-scan
 /plugin install swag-scan@swag-scan
 ```
 
-**GitHub Copilot (VS Code)**
+Restart Claude Code after installing. The plugin has no pinned version: every commit on `main` counts as a new version, so `/plugin marketplace update swag-scan` (or the plugin manager's update) picks up the latest fixes.
 
-```bash
-git clone --depth 1 https://github.com/jswagger/swag-scan.git && node swag-scan/scripts/install-copilot.mjs
-```
+## Quick start
 
-Run it from your project root. Skills land in `.github/skills/`. Use `--target .agents/skills` for that folder instead, `--project DIR` to install elsewhere, and `--force` to overwrite an existing install.
-
-## Use
+Check out the branch you want reviewed (committed, and ahead of the branch it will merge into), start Claude Code **inside that repository**, and run:
 
 ```
-/bug-hunter origin/main --ticket PROJ-123
-/code-sweeper origin/main
-/code-sweeper --no-fix          # review only, no edits
-/security-auditor origin/main
+/swag-scan:swag-scan [base-ref] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh] [--live]
 ```
 
-In Claude Code, skills are namespaced: `/swag-scan:bug-hunter`. Leave off the base ref to use the configured default branch.
+- `base-ref`: the branch this one will merge into, such as `origin/main`. Leave it off and Swag Scan detects it.
+- `--ticket`: a ticket ID or file path, so the Analyst can check the change against acceptance criteria. See [Ticket files](#ticket-files).
+- `--agents`: run only some of the crew.
+- `--fresh`: ignore earlier results for this commit and review again.
+- `--live`: open a page that shows the crew at work. See [Live view](#live-view-dashboard).
 
-### Claude Code: the whole crew in one command
+The command first scans with scripts only (no model, no edits). It then starts the Analyst, Inspector and Security Guard in parallel for the ones that have leads. Each saves its findings with a line in its own voice, and a script builds one decisions-first report with no model tokens:
 
-```
-/swag-scan:swag-scan [base-ref] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh]
-```
+- what needs your decision (🔴 Critical, 🟡 Feature gap or design issue, ✅ Cleanup),
+- what was fixed,
+- your ticket's acceptance criteria, with their status and the findings linked to them,
+- who looked at what, and the language coverage.
 
-The command scans with scripts only (no model, no edits), then starts the **Analyst**, **Inspector** and **Security Guard** in parallel for the ones that have leads. Each saves its findings (with a line in its own voice), and a script builds one decisions-first report from them with no model tokens: items that need your decision, what was fixed, your ticket's acceptance criteria with their status and linked findings, who looked at what, and coverage. It is saved to `.swag-scan/reports/<commit>/`. Agents with no leads are skipped, and the report says "no leads", never "clean". You can also ask for them by name, for example `@agent-swag-scan:security-guard`.
+Reports are saved to `.swag-scan/reports/<commit>/` as `report.md` and `report.html`. A reviewer with no leads is skipped, and the report says "no leads", never "clean". You can also ask for one by name, for example `@agent-swag-scan:security-guard`.
 
-Fewer permission prompts: add `Bash(swag-scan *)` to your allowed commands. The plugin puts a `swag-scan` command on the Bash path, and every run uses that one shape.
+### Permissions
 
-The three agents have limits: none can create files, only the Inspector can edit (and only with auto-fix on), and the Analyst and Security Guard are report-only. A plugin hook also restricts what they can run in Bash to the Swag Scan scripts, read-only git and read-only file commands, and lets them write only inside `.swag-scan/`. The hook ignores your own session and every other agent. It is a guardrail, not a sandbox.
+To cut permission prompts, add `Bash(swag-scan *)` to your allowed commands. The plugin puts a `swag-scan` command on the Bash path, and every run uses that one shape.
 
-### Windows and the VS Code extension
+The reviewers have limits. None can create files. Only the Inspector can edit, and only with auto-fix on; the Analyst and Security Guard are report-only. A plugin hook also restricts what they can run in Bash to the Swag Scan scripts, read-only git and read-only file commands, and lets them write only inside `.swag-scan/`. The hook ignores your own session and every other agent. It is a guardrail, not a sandbox.
 
-Swag Scan has been trial-run on Windows 11 with Node 22. One catch: if you use Claude Code through the VS Code extension, the `claude` command may not be on the PATH of your terminal (`claude: command not found`). The extension ships its own copy. Use that to load the plugin from a folder:
+The first run changes no files in your repository. Everything Swag Scan writes goes to `.swag-scan/`.
+
+## First run in a new repository
+
+1. **Start Claude inside the repository you are reviewing** (`cd` first). The reviewers read `.swag-scan/run/summary.json` relative to where the session started, and their writes are limited to `.swag-scan/` there. Reviewing a second repository means a second session started in it.
+2. **Check the base.** It should be the branch this one will merge into, which is not always the default branch. Compare `git diff --stat <base>...HEAD` with what you expect. Swag Scan warns when another base makes the change much smaller, but only you know the real target.
+3. **Keep the tool's folder out of `git status`** by adding `.swag-scan/` to `.git/info/exclude` (local only, nothing to commit).
+4. **Look at the scan summary before the reviewers run.** It shows how many files came from the branch diff and how many are untracked. Untracked, non-ignored text files are scanned, so a local folder of data files can swamp the real change. If you see a warning, add that folder to `.git/info/exclude` and run again.
+5. **Point to the ticket** with `--ticket <path>` or a `ticketFolder` in `~/.swag-scan/settings.json`, if the work has one. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
+
+## Windows and the VS Code extension
+
+Swag Scan has been trial-run on Windows 11 with Node 22. One catch: if you use Claude Code through the VS Code extension, the `claude` command may not be on the PATH of your terminal (`claude: command not found`). That only matters if you want to load the plugin from a folder (for example a clone you are testing) instead of installing it. The extension ships its own copy of `claude`:
 
 - **Find it:** `%USERPROFILE%\.vscode\extensions\anthropic.claude-code-<version>-win32-x64\resources\native-binary\claude.exe`. The version is part of the folder name, so the path changes when the extension updates.
 - **PowerShell** needs the call operator: `& "<path>\claude.exe" --plugin-dir <swag-scan folder>`
 - **Command Prompt** takes the quoted path alone: `"<path>\claude.exe" --plugin-dir <swag-scan folder>`
 - **Then type the command inside Claude**, not in the shell: start the session first, and only then enter `/swag-scan:swag-scan <base> --ticket <path> --live`. Pasting both lines into the terminal runs the second one as a shell command and fails.
 
-### First run in a new repository
+## Using a reviewer on its own
 
-1. **Start Claude inside the repository you are reviewing** (`cd` first). The agents read `.swag-scan/run/summary.json` relative to where the session started, and their writes are limited to `.swag-scan/` there. Reviewing a second repository means a second session started in it.
-2. **Check the base.** It should be the branch this one will merge into, which is not always the default branch. Compare `git diff --stat <base>...HEAD` with what you expect. Swag Scan warns when another base makes the change much smaller, but only you know the real target.
-3. **Keep the tool's folder out of `git status`** by adding `.swag-scan/` to `.git/info/exclude` (local only, nothing to commit).
-4. **Look at the scan summary before the agents run.** It shows how many files came from the branch diff and how many are untracked. Untracked, non-ignored text files are scanned, so a local folder of data files can swamp the real change. If you see a warning, add that folder to `.git/info/exclude` and run again.
-5. **Point to the ticket** with `--ticket <path>` or a `ticketFolder` in `~/.swag-scan/settings.json`, if the work has one. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
+The three skills behind the crew also work alone, and print their own report. In Claude Code they are namespaced:
+
+```
+/swag-scan:bug-hunter origin/main --ticket PROJ-123
+/swag-scan:code-sweeper origin/main
+/swag-scan:code-sweeper --no-fix          # review only, no edits
+/swag-scan:security-auditor origin/main
+```
+
+Leave off the base ref to use the configured default branch.
+
+## GitHub Copilot (experimental, not part of the plugin)
+
+The three skills can be copied into a project for Copilot agent mode in VS Code. The crew, report and live view are Claude Code only for now, and Copilot support has had much less testing.
+
+```bash
+git clone --depth 1 https://github.com/jswagger/swag-scan.git && node swag-scan/scripts/install-copilot.mjs
+```
+
+Run the installer from your project root. Skills land in `.github/skills/`. Use `--target .agents/skills` for that folder instead, `--project DIR` to install elsewhere, and `--force` to overwrite an existing install. The commands are then `/bug-hunter`, `/code-sweeper` and `/security-auditor`.
+
+## Reference
 
 ### Findings format
 
@@ -238,7 +270,7 @@ Bug Hunter and Security Auditor run two passes. `models.<agent>.basic` and `.adv
 
 ## Tests
 
-Requires Node 22 or 24 (both run in CI). No third-party dependencies.
+Both Node 22 and 24 run in CI. No third-party dependencies.
 
 ```bash
 node --test \
@@ -247,6 +279,10 @@ node --test \
   "skills/security-auditor/test/*.test.mjs" \
   "skills/review-tools-common/test/*.test.mjs"
 ```
+
+## Feedback
+
+Swag Scan is in beta, so real-world reports are the most useful thing you can send: what you ran, what it found, what it got wrong, and any error text. [Open an issue](https://github.com/jswagger/swag-scan/issues).
 
 ## License
 
