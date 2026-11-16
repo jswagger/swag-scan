@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/swagScanLogo.jpg" alt="Swag Scan logo" width="240">
+  <img src="assets/swagScanLogo.jpg" alt="Swag Scan logo" width="360">
 </p>
 
 # Swag Scan
@@ -13,13 +13,9 @@ A pre-pull-request review for [Claude Code](https://claude.com/claude-code). Thr
 
 ## The crew
 
-| Reviewer | Question it answers | Built on |
-| --- | --- | --- |
-| **Analyst** | Does the change work, and does it meet the ticket? | [Bug Hunter](#bug-hunter) |
-| **Inspector** | Is the change clean, simple and well tested? | [Code Sweeper](#code-sweeper) |
-| **Security Guard** | Does the change introduce vulnerabilities? | [Security Auditor](#security-auditor) |
-
-The reviewers don't overlap: the Analyst skips style and vulnerabilities, the Inspector skips bugs and security, and so on. Scripts go first: they collect the diff and flag candidates with fast heuristics, using no model. A reviewer only starts when its scripts found something to look at, and then judges each lead in context.
+<p align="center">
+  <img src="assets/agents/crew_cards.png" alt="The Swag Scan crew, introducing the Analyst, Inspector and Security Guard" width="3400">
+</p>
 
 ## Install
 
