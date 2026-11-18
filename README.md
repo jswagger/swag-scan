@@ -88,6 +88,7 @@ To cut permission prompts, add `Bash(swag-scan *)` to your allowed commands. Eve
 3. **Keep the tool's folder out of `git status`** by adding `.swag-scan/` to `.git/info/exclude` (local only, nothing to commit).
 4. **Look at the scan summary before the reviewers run.** It shows how many files came from the branch diff and how many are untracked. Untracked, non-ignored text files are scanned, so a local folder of data files can swamp the real change. If you see a warning, add that folder to `.git/info/exclude` and run again.
 5. **Point to the ticket** with `--ticket <path>` or a `ticketFolder` in `~/.swag-scan/settings.json`, if the work has one. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
+   In Jira, open the ticket, choose **Export**, then **Export XML**. The XML appears in a browser tab; press Ctrl+S (Cmd+S on Mac) and save it as `ID-123.xml` in the ticket folder. Copying the page into a text file with the `.xml` extension works too.
 
 ## More
 

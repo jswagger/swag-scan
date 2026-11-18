@@ -4,11 +4,12 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { basename, extname, isAbsolute, join, resolve } from 'node:path';
 
 const TICKET_ID = /(?<![A-Za-z0-9])([A-Z][A-Z0-9]+-\d+)(?!\d)/;
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
-const TICKET_EXTENSIONS = ['.md', '.txt'];
+const TICKET_EXTENSIONS = ['.xml', '.csv', '.md', '.txt'];
+const UNREADABLE_EXTENSIONS = ['.xls', '.xlsx', '.doc', '.docx'];
 
 /** "feature/PROJ-123-add-login" gives "PROJ-123". Jira-style keys only, so "bugfix-2" is not a ticket. */
 export function ticketIdFromBranch(branch) {
@@ -34,6 +35,7 @@ export function resolveTicketFolder({ flag, env = process.env, home = homedir(),
   const settings = userSettings ?? loadUserSettings(env, home);
   const choice = flag ? { path: flag, source: '--ticket-dir' }
     : env.SWAG_SCAN_TICKET_DIR ? { path: env.SWAG_SCAN_TICKET_DIR, source: 'SWAG_SCAN_TICKET_DIR' }
+    : settings.ticketSourcePath ? { path: settings.ticketSourcePath, source: 'user settings' }
     : settings.ticketFolder ? { path: settings.ticketFolder, source: 'user settings' }
     : repoPath ? { path: repoPath, source: 'repo config' }
     : undefined;
@@ -62,9 +64,208 @@ export function findTicketFile(folder, id) {
   return name && join(folder, name);
 }
 
+export function findUnreadableTicket(folder, id) {
+  if (!existsSync(folder)) return undefined;
+  const wanted = id.toLowerCase();
+  return readdirSync(folder).sort().find((name) =>
+    UNREADABLE_EXTENSIONS.some((extension) => name.toLowerCase() === `${wanted}${extension}`));
+}
+
+export function unreadableTicketMessage(fileName, id) {
+  return `${fileName} is a Word or Excel export, which Swag Scan cannot read (it uses no third-party libraries). In Jira, open the ticket, choose Export, then Export XML, and save it as ${id}.xml in the same folder. (A CSV exported from a search works too.)`;
+}
+
 /** Looks like a path rather than a bare ticket name. */
 export function looksLikePath(value) {
-  return /[\\/]/.test(value) || TICKET_EXTENSIONS.some((extension) => value.toLowerCase().endsWith(extension));
+  return /[\\/]/.test(value) || [...TICKET_EXTENSIONS, ...UNREADABLE_EXTENSIONS].some((extension) => value.toLowerCase().endsWith(extension));
+}
+
+export class TicketFileError extends Error {}
+
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  text = text.replace(/^\uFEFF/, '');
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (char === '"') {
+      if (quoted && text[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === ',' && !quoted) {
+      row.push(field);
+      field = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && text[i + 1] === '\n') i += 1;
+      row.push(field);
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += char;
+    }
+  }
+  row.push(field);
+  if (row.some((value) => value.trim())) rows.push(row);
+  return rows;
+}
+
+export function parseCsv(text) {
+  return parseCsvRows(text);
+}
+
+export function csvToTicketMarkdown(text, id) {
+  const rows = parseCsvRows(text);
+  if (!rows.length) throw new TicketFileError('This CSV has no ticket data.');
+  const headers = rows.shift().map((value) => value.trim());
+  const keyIndex = headers.findIndex((value) => /^issue key$/i.test(value));
+  let record = rows[0];
+  if (id && keyIndex >= 0) record = rows.find((row) => (row[keyIndex] ?? '').trim().toLowerCase() === id.toLowerCase()) ?? record;
+  if (!record) throw new TicketFileError(`No issue matching ${id} was found in this CSV.`);
+  const value = (name) => record[headers.findIndex((header) => new RegExp(`^${name}$`, 'i').test(header))] ?? '';
+  const summary = value('summary').trim();
+  const description = value('description').trim();
+  const acceptanceHeader = headers.findIndex((header) => /acceptance/i.test(header));
+  const acceptance = acceptanceHeader >= 0 ? (record[acceptanceHeader] ?? '').trim() : '';
+  const key = keyIndex >= 0 ? (record[keyIndex] ?? '').trim() : id ?? '';
+  const lines = [`# ${[key, summary].filter(Boolean).join(': ') || 'Ticket'}`];
+  if (description) lines.push('', '## Description', '', description);
+  if (acceptance) {
+    const bullets = acceptance.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+      .map((line) => `- ${line.replace(/^(?:[*#-]|\d+[.)])\s*/, '')}`);
+    lines.push('', '## Acceptance Criteria', '', ...bullets);
+  }
+  return lines.join('\n');
+}
+
+const XML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+function decodeEntities(text) {
+  return text.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (whole, decimal, hex, name) => {
+    if (decimal || hex) {
+      const code = decimal ? Number(decimal) : Number.parseInt(hex, 16);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    }
+    return XML_ENTITIES[name.toLowerCase()] ?? whole;
+  });
+}
+
+export function htmlToText(html) {
+  const lists = [];
+  const text = html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<h[1-6]\b[^>]*>/gi, '\n\n### ')
+    .replace(/<(\/?)(ul|ol|li)\b[^>]*>/gi, (_, close, tag) => {
+      const name = tag.toLowerCase();
+      if (name === 'li') {
+        if (close) return '\n';
+        const list = lists.at(-1);
+        if (!list) return '\n- ';
+        list.count += 1;
+        return `\n${' '.repeat(lists.length - 1)}${list.ordered ? `${list.count}. ` : '- '}`;
+      }
+      if (!close) {
+        lists.push({ ordered: name === 'ol', count: 0 });
+        return '\n';
+      }
+      lists.pop();
+      return lists.length ? '\n' : '\n\n';
+    })
+    .replace(/<\/(?:p|h[1-6]|blockquote)>/gi, '\n\n')
+    .replace(/<\/(?:div|tr|table|pre)>/gi, '\n')
+    .replace(/<\/t[dh]>/gi, ' ')
+    .replace(/<[^>]*>/g, '');
+  return decodeEntities(text)
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/, ''))
+    .join('\n')
+    .replace(/^(\s*(?:- |\d+\. ).*)\n\n(?=\s*(?:- |\d+\. ))/gm, '$1\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function richText(raw = '') {
+  const trimmed = raw.trim();
+  const cdata = /^<!\[CDATA\[([\s\S]*)\]\]>$/.exec(trimmed);
+  if (cdata) return htmlToText(cdata[1]);
+  if (/<[a-z/]/i.test(trimmed)) return htmlToText(trimmed);
+  return htmlToText(decodeEntities(trimmed));
+}
+
+const elementText = (block, name) => new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, 'i').exec(block)?.[1];
+const IGNORED_BLOCKS = /<(comments|customfields|attachments|issuelinks|subtasks|labels|components|fixVersion|version)\b[\s\S]*?<\/\1>/gi;
+
+function markAcceptanceHeading(text) {
+  return text.split('\n').map((line) =>
+    /^\W*acceptance criteria\W*$/i.test(line) ? '\n### Acceptance Criteria\n' : line
+  ).join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function toBullet(line) {
+  return `- ${line.replace(/^(?:[*#-]|\d+[.)])\s*/, '').trim()}`;
+}
+
+function criteriaLines(text) {
+  const out = [];
+  let seenList = false;
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    const item = /^(\s*)(?:- |\d+\. )(.*)$/.exec(line);
+    if (item) {
+      seenList = true;
+      out.push(item[1] ? `${item[1]}- ${item[2]}` : toBullet(line));
+    } else if (seenList && /:\s*$/.test(line) && line.length < 60) {
+      const title = line.replace(/^\W+|[:\s]+$/g, '');
+      out.push(`\n## ${title}\n`);
+    } else {
+      out.push(toBullet(line));
+    }
+  }
+  return out;
+}
+
+export function jiraXmlToTicketMarkdown(text, id) {
+  const items = text.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
+  if (!items.length) throw new TicketFileError('This does not look like a Jira XML export (no issue found in it). In Jira, open the ticket and choose Export, then Export XML.');
+  const keyOf = (item) => decodeEntities((elementText(item.replace(IGNORED_BLOCKS, ''), 'key') ?? '').trim());
+  let item = id ? items.find((entry) => keyOf(entry).toLowerCase() === id.toLowerCase()) : undefined;
+  if (!item && items.length === 1) [item] = items;
+  if (!item) throw new TicketFileError(`${id} is not in this XML, which holds ${items.length} issues. Check the ticket ID or export just that ticket.`);
+
+  const head = item.replace(IGNORED_BLOCKS, '');
+  const key = keyOf(item) || id || '';
+  const titleText = decodeEntities((elementText(head, 'title') ?? '').trim()).replace(/^\[[^\]]*\]\s*/, '');
+  const summary = decodeEntities((elementText(head, 'summary') ?? '').trim()) || titleText;
+  const description = markAcceptanceHeading(richText(elementText(head, 'description')));
+  const criteria = [];
+  for (const field of item.match(/<customfield\b[\s\S]*?<\/customfield>/gi) ?? []) {
+    if (!/acceptance/i.test(decodeEntities(elementText(field, 'customfieldname') ?? ''))) continue;
+    for (const value of field.match(/<customfieldvalue\b[\s\S]*?<\/customfieldvalue>/gi) ?? []) {
+      criteria.push(...criteriaLines(richText(elementText(value, 'customfieldvalue'))));
+    }
+  }
+  const lines = [`# ${[key, summary].filter(Boolean).join(': ') || 'Ticket'}`];
+  if (description) lines.push('', '## Description', '', description);
+  if (criteria.length) lines.push('', '## Acceptance Criteria', '', ...criteria);
+  return lines.join('\n');
+}
+
+export function readTicketText(path) {
+  const extension = extname(path).toLowerCase();
+  const id = TICKET_ID.exec(basename(path))?.[1];
+  if (UNREADABLE_EXTENSIONS.includes(extension)) {
+    throw new TicketFileError(unreadableTicketMessage(basename(path), id ?? basename(path, extname(path))));
+  }
+  const text = readFileSync(path, 'utf8');
+  if (extension === '.xml') return jiraXmlToTicketMarkdown(text, id);
+  if (extension === '.csv') return csvToTicketMarkdown(text, id);
+  return text;
 }
 
 // --- parsing ---------------------------------------------------------------------------------------------

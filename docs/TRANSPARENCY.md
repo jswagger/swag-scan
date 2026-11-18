@@ -35,7 +35,7 @@ The scripts call `git` with an argument list, not through a shell. Nothing here 
 
 - Your branch diff and the untracked, non-ignored text files in the repository. Binary and oversized files are skipped.
 - Code around the changes: callers of changed symbols, and files related to them (see `scope.maxRelatedFiles` in the [reference](REFERENCE.md#security-auditor)).
-- A ticket file, only if you point to one with `--ticket` or the branch name names one. Reviewers see only its title, description and acceptance criteria.
+- A ticket file (`.xml`, `.csv`, `.md` or `.txt`), only if you point to one with `--ticket` or the branch name names one. Jira XML and CSV exports are read by small parsers inside Swag Scan; Word and Excel files are not read. Reviewers see only the title, description and acceptance criteria.
 - `~/.swag-scan/settings.json` (or the file named by `SWAG_SCAN_SETTINGS`), for a ticket folder. The `SWAG_SCAN_TICKET_DIR` and `SWAG_SCAN_EVENTS` environment variables.
 - The `config.json` next to each skill.
 
