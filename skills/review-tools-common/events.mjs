@@ -3,7 +3,7 @@
 //   - it costs no model tokens (scripts and hooks write it, never the model),
 //   - it never blocks or fails a scan (every write is best effort and swallows errors),
 //   - it holds no code and no finding text: only a small, fixed set of short fields.
-// Turn it off with SWAG_SCAN_EVENTS=off. The shape is documented in the README ("Event log").
+// Turn it off with SWAG_SCAN_EVENTS=off. The shape is documented in docs/REFERENCE.md ("Event log").
 
 import { appendFileSync, closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';

@@ -5,7 +5,7 @@
 //   { findings: [{ severity, title, file?, line?, locations?, flaggedText?, rule?, evidence?, verify?, recommendation?,
 //                  disposition?, criteria?, confidence?, voiceLine?, fixNote? }],
 //     clean: [{ area, note? } | "area"], dismissed: [{ rule?, file?, line?, reason }] }
-// Saved output: see buildFindingsReport(). Documented for people in the README ("Findings format").
+// Saved output: see buildFindingsReport(). Documented for people in docs/REFERENCE.md ("Findings format").
 
 export const FINDINGS_SCHEMA_VERSION = 1;
 

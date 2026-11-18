@@ -1,21 +1,56 @@
 <p align="center">
-  <img src="assets/swagScanLogo.jpg" alt="Swag Scan logo" width="360">
+  <img src="assets/banner/swag-scan-banner.png" alt="Swag Scan: pre-PR review for coding agents. Scripts scan your branch diff first, then the Analyst, Inspector and Security Guard review only what matters." width="900">
 </p>
 
 # Swag Scan
 
+**A pre-pull-request review for [Claude Code](https://claude.com/claude-code).** Three reviewers read your branch, only your change and never the whole repo, and hand back one short report of what needs your decision.
+
 [![Tests](https://github.com/jswagger/swag-scan/actions/workflows/test.yml/badge.svg)](https://github.com/jswagger/swag-scan/actions/workflows/test.yml)
 ![Status: beta](https://img.shields.io/badge/status-beta-orange)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+![Node 22 | 24](https://img.shields.io/badge/node-22%20%7C%2024-339933)
+![Dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen)
 
-A pre-pull-request review for [Claude Code](https://claude.com/claude-code). Three reviewers look at your branch, and only your change, never the whole repo.
+> **Beta.** Swag Scan is still being tested on real projects and is not at 1.0. Expect rough edges, and expect behavior to change between updates. Findings are leads for a human to judge, not verdicts, and the report never says your code is "clean". [Open an issue](https://github.com/jswagger/swag-scan/issues) if something looks wrong.
 
-> **Beta.** Swag Scan is still being tested on real projects and is not at 1.0. Expect rough edges, and expect behavior to change between updates. Findings are leads for a human to judge, not verdicts, and the report never says your code is "clean". Bug reports and odd behavior are welcome: [open an issue](https://github.com/jswagger/swag-scan/issues).
+## See it work
+
+<p align="center">
+  <img src="assets/dashboard/live-view.png" alt="The Swag Scan live view: five steps, file counts, each reviewer's latest line and a timeline of what the crew has said" width="800">
+</p>
+
+While a scan runs, a page opens in your browser showing the five steps, the counts, each reviewer's latest line and a newest-first timeline. Scripts build it from a local event log, so it costs no model tokens. *The image is an illustrative mock-up with sample data; it also shows a Test Runner tool that is still on the roadmap.*
+
+When the scan finishes you get one decisions-first report:
+
+- what needs your decision (🔴 Critical, 🟡 Feature gap or design issue, ✅ Cleanup),
+- what was fixed,
+- your ticket's acceptance criteria, with their status and the findings linked to them,
+- who looked at what, and the language coverage.
 
 ## The crew
 
 <p align="center">
-  <img src="assets/agents/crew_cards.png" alt="The Swag Scan crew, introducing the Analyst, Inspector and Security Guard" width="3400">
+  <img src="assets/agents/crew_cards.png" alt="The Swag Scan crew, introducing the Analyst, Inspector and Security Guard" width="900">
 </p>
+
+| Reviewer | Asks | Built on | Can edit files? |
+| --- | --- | --- | --- |
+| **Analyst** | Does it work, and did it break anything? | Bug Hunter | No |
+| **Inspector** | Was it built properly, with no loose ends? | Code Sweeper | Only with auto-fix on |
+| **Security Guard** | Is it safe to ship? | Security Auditor | No |
+
+## Built to be trusted
+
+- **No third-party code.** No `package.json`. Every import is a Node built-in, and the tests run on Node 22 and 24 with nothing installed.
+- **No network from the scripts.** No `fetch`, no `http`, no URLs, no telemetry. The live view is one self-contained page that re-reads a local file.
+- **A short, fixed list of commands.** Read-only `git` (`diff`, `merge-base`, `rev-parse`, `ls-files`, `grep`) run without a shell, plus the plugin's own scripts. Nothing commits, checks out, fetches or pushes.
+- **Writes stay in `.swag-scan/`.** The first run changes no files in your repository. Only the Inspector can edit source, and only with auto-fix on.
+- **The reviewers are on a leash.** A default-deny hook limits what they can run in Bash to the Swag Scan scripts, read-only git and read-only file commands.
+- **Honest about the model.** The scripts send nothing anywhere. The reviewers are Claude Code subagents, so what they read is seen by the model your Claude Code session already uses.
+
+Every command, read and write is listed in **[docs/TRANSPARENCY.md](docs/TRANSPARENCY.md)**, with a few one-line commands to check the claims yourself.
 
 ## Install
 
@@ -37,27 +72,14 @@ Check out the branch you want reviewed (committed, and ahead of the branch it wi
 ```
 
 - `base-ref`: the branch this one will merge into, such as `origin/main`. Leave it off and Swag Scan detects it.
-- `--ticket`: a ticket ID or file path, so the Analyst can check the change against acceptance criteria. See [Ticket files](#ticket-files).
+- `--ticket`: a ticket ID or file path, so the Analyst can check the change against acceptance criteria. See [Ticket files](docs/REFERENCE.md#ticket-files).
 - `--agents`: run only some of the crew.
 - `--fresh`: ignore earlier results for this commit and review again.
-- `--no-live`: skip the live view. By default a page opens in your browser that shows the crew at work; see [Live view](#live-view-dashboard).
+- `--no-live`: skip the live view. See [Live view](docs/REFERENCE.md#live-view-dashboard).
 
-The command first scans with scripts only (no model, no edits). It then starts the Analyst, Inspector and Security Guard in parallel for the ones that have leads. Each saves its findings with a line in its own voice, and a script builds one decisions-first report with no model tokens:
+Scripts scan first (no model, no edits). The Analyst, Inspector and Security Guard then review in parallel, for the ones that have leads. A reviewer with no leads is skipped, and the report says "no leads", never "clean". Reports are saved to `.swag-scan/reports/<commit>/` as `report.md` and `report.html`. You can also ask for one reviewer by name, for example `@agent-swag-scan:security-guard`.
 
-- what needs your decision (🔴 Critical, 🟡 Feature gap or design issue, ✅ Cleanup),
-- what was fixed,
-- your ticket's acceptance criteria, with their status and the findings linked to them,
-- who looked at what, and the language coverage.
-
-Reports are saved to `.swag-scan/reports/<commit>/` as `report.md` and `report.html`. A reviewer with no leads is skipped, and the report says "no leads", never "clean". You can also ask for one by name, for example `@agent-swag-scan:security-guard`.
-
-### Permissions
-
-To cut permission prompts, add `Bash(swag-scan *)` to your allowed commands. The plugin puts a `swag-scan` command on the Bash path, and every run uses that one shape.
-
-The reviewers have limits. None can create files. Only the Inspector can edit, and only with auto-fix on; the Analyst and Security Guard are report-only. A plugin hook also restricts what they can run in Bash to the Swag Scan scripts, read-only git and read-only file commands, and lets them write only inside `.swag-scan/`. The hook ignores your own session and every other agent. It is a guardrail, not a sandbox.
-
-The first run changes no files in your repository. Everything Swag Scan writes goes to `.swag-scan/`.
+To cut permission prompts, add `Bash(swag-scan *)` to your allowed commands. Every run uses that one command shape.
 
 ## First run in a new repository
 
@@ -67,201 +89,14 @@ The first run changes no files in your repository. Everything Swag Scan writes g
 4. **Look at the scan summary before the reviewers run.** It shows how many files came from the branch diff and how many are untracked. Untracked, non-ignored text files are scanned, so a local folder of data files can swamp the real change. If you see a warning, add that folder to `.git/info/exclude` and run again.
 5. **Point to the ticket** with `--ticket <path>` or a `ticketFolder` in `~/.swag-scan/settings.json`, if the work has one. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
 
-## Windows and the VS Code extension
+## More
 
-Swag Scan has been trial-run on Windows 11 with Node 22. One catch: if you use Claude Code through the VS Code extension, the `claude` command may not be on the PATH of your terminal (`claude: command not found`). That only matters if you want to load the plugin from a folder (for example a clone you are testing) instead of installing it. The extension ships its own copy of `claude`:
-
-- **Find it:** `%USERPROFILE%\.vscode\extensions\anthropic.claude-code-<version>-win32-x64\resources\native-binary\claude.exe`. The version is part of the folder name, so the path changes when the extension updates.
-- **PowerShell** needs the call operator: `& "<path>\claude.exe" --plugin-dir <swag-scan folder>`
-- **Command Prompt** takes the quoted path alone: `"<path>\claude.exe" --plugin-dir <swag-scan folder>`
-- **Then type the command inside Claude**, not in the shell: start the session first, and only then enter `/swag-scan:swag-scan <base> --ticket <path>`. Pasting both lines into the terminal runs the second one as a shell command and fails.
-
-## GitHub Copilot (experimental, not part of the plugin)
-
-The three skills can be copied into a project for Copilot agent mode in VS Code. The crew, report and live view are Claude Code only for now, and Copilot support has had much less testing.
-
-```bash
-git clone --depth 1 https://github.com/jswagger/swag-scan.git && node swag-scan/scripts/install-copilot.mjs
-```
-
-Run the installer from your project root. Skills land in `.github/skills/`. Use `--target .agents/skills` for that folder instead, `--project DIR` to install elsewhere, and `--force` to overwrite an existing install. The commands are then `/bug-hunter`, `/code-sweeper` and `/security-auditor`.
-
-## Reference
-
-### Findings format
-
-Each agent hands in its judged findings in one shared shape, saved by `skills/review-tools-common/save-findings.mjs` to `.swag-scan/run/findings-<agent>.json`. The script checks the findings, assigns ids (`AN-1`, `IN-1`, `SG-1`, critical first) and adds the tool, base, coverage line and counts.
-
-| Severity | Meaning | Needs |
-| --- | --- | --- |
-| 🔴 `critical` | Will break or is exploitable | `evidence` (a concrete failing input or state) and a `recommendation` or something to `verify` |
-| 🟡 `design` | Feature gap or design issue | `verify`: the one thing to check |
-| ✅ `minor` | Cleanup | `recommendation` |
-
-| Disposition | Meaning |
+| | |
 | --- | --- |
-| `needs-decision` | The developer must weigh it. The default, and the only one the Analyst and Security Guard can use (they are report-only). |
-| `auto-fixed` | The Inspector fixed it. Needs a `fixNote`. Listed in the report, not commented on in a review view. |
-| `would-auto-fix` | A safe fix exists but auto-fix was off for this run (for example the first, report-only run). |
-
-Other fields: `title`, `rule`, `file` and `line` (the line in the new version of the file, or a `locations` list), `flaggedText` (the exact code on that line, so the finding can be found again after fixes), `criteria` (ids of the ticket's acceptance criteria it relates to, checked against the ticket), `confidence`, and `voiceLine` (the agent's one-sentence voice, kept apart from the facts). The Analyst can hand in Bug Hunter's own findings file with `--format bug-hunter`: probable bugs become critical, suspicious items become design issues.
-
-Ticket criterion status (todo, done, future) is saved separately in `.swag-scan/run/ticket-report.json` for the report, and kept out of the files the agents read, because what is already built would bias a review.
-
-### Event log
-
-While a scan runs, scripts append one JSON line per event to `.swag-scan/run/events.jsonl`. A dashboard, a status line or any other tool can read it. It costs no model tokens, never blocks or fails a scan (writes are best effort), and holds no code and no finding text. `SWAG_SCAN_EVENTS=off` turns it off.
-
-```json
-{"v":1,"t":"2026-11-02T12:00:01.250Z","agent":"analyst","kind":"progress","phase":"scan","step":4,"steps":6,"label":"scan"}
-```
-
-| Field | Meaning |
-| --- | --- |
-| `v`, `t` | Format version (1) and the time (ISO, UTC). |
-| `agent` | `analyst`, `inspector`, `security-guard`, or `swag-scan` for the run itself. |
-| `kind` | `run-started`, `started`, `progress`, `finding`, `saved`, `done`, `waiting`, `error`, `run-done`. |
-| `phase` | `scan` (scripts), `review` (an agent judging its leads) or `report`. |
-| `step`, `steps` | Real counts such as "step 4 of 6". Never a percentage. |
-| `label` | A short fixed word, such as `collect`, `scan`, `callers`, `packets`. |
-| `count`, `total` | A number that goes with the kind: leads found, findings saved, items needing a decision. |
-| `id`, `severity`, `file` | On `finding` only: the finding id, its severity and its file name. |
-
-Scripts write the scan, finding and report events. In Claude Code, an asynchronous hook also records `started` and `done` for each agent's review, and `waiting` when a permission prompt appears. That hook only writes while a Swag Scan run is active in the project, and it only nudges: it does not track whether the prompt was approved.
-
-### Live view (dashboard)
-
-A page that shows the crew at work while a scan runs: the five steps, counts, each agent's face with its latest line, a newest-first timeline, and a "waiting for you" note when a permission prompt appears. It is built by a script from the event log, so it costs no model tokens, and the lines are fixed templates, not model output. It never opens by itself unless you ask.
-
-```bash
-node skills/review-tools-common/swag-scan.mjs dashboard [--watch] [--open]
-```
-
-- Writes `.swag-scan/dashboard.html` (self-contained: no network, no external fonts or scripts) and prints its path. With no scan yet it shows "Waiting for a scan".
-- `--watch` keeps the page's data fresh until the scan ends (start it before `run`, or while one is running). The page picks up changes without reloading, and says "Not updating" if the watcher stops.
-- `--open` opens the page in your browser. In Claude Code, `/swag-scan:swag-scan` starts the watcher and opens the page for you unless you pass `--no-live`.
-- The page shows only what events carry: agent, step counts, file names and finding ids. It never tracks whether you approved a prompt.
-
-### Run everything at once
-
-One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, it uses no model tokens, and it changes no files:
-
-```bash
-node skills/review-tools-common/swag-scan.mjs run [--base main] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh] [--json]
-```
-
-It prints one progress line per agent, then a short summary: leads per agent, the language coverage line, the ticket it found, and whether a stored review already covers this commit. Leads are script matches, not verified findings. Results are written to `.swag-scan/run/` (replaced every run, gitignored). Because the command is always the same shape, one permission rule covers it.
-
-The scripts also run on their own. Scanners print candidates as JSON and never apply fixes:
-
-```bash
-node skills/review-tools-common/collect-diff.mjs \
-  --config skills/code-sweeper/config.json origin/main \
-  | node skills/code-sweeper/scripts/scan-patterns.mjs
-```
-
-Which diff is reviewed:
-
-- No argument: the base is detected automatically. It tries `origin/HEAD`, `develop`, `test`, `main`, then `master`, and picks the closest one your branch grew from. The collector prints which one it chose. If it finds no changes, it says so and suggests a ref.
-- A ref such as `origin/main` is compared from `git merge-base <ref> HEAD`, so target-only commits are excluded.
-- `HEAD` compares only the working tree, which is often empty on a clean feature branch.
-- Untracked, non-ignored text files are included. Binary and oversized files are skipped.
-
-## Bug Hunter
-
-A regression safety net. It looks for removed guards, dropped awaits, changed contracts, and broken callers, then checks the change against your ticket's acceptance criteria.
-
-- **Rules:** `REMOVED_GUARD`, `REMOVED_AWAIT`, `REMOVED_ERROR_HANDLING`, `REMOVED_CLEANUP`, `MISSING_RELEASE`, `REMOVED_EARLY_EXIT`, `BEHAVIOR_CHANGE_PAIR`, `SIGNATURE_CHANGED`, `REMOVED_TEST_ASSERTION`, `TEST_DISABLED`.
-- **Packets:** scripts rank findings by risk and bundle them with surrounding code and callers. Large diffs hit a size gate and ask whether to review everything or only the riskiest changes.
-- **Languages:** JavaScript/TypeScript, C#, Python.
-- **Reports:** saved to `.bug-hunter/reports`. Add `.bug-hunter/` to `.gitignore`.
-- **Silence a finding:** `bug-hunter-ignore` or `bug-hunter-ignore: RULE_NAME` inline.
-
-| Setting | Purpose | Default |
-| --- | --- | --- |
-| `autoFix` | Fix unambiguous 🔴 bugs. When `false`, no files are ever edited | `false` |
-| `diff.maxDiffBytes` | Size gate for the diff | `102400` |
-| `ticketContext` | Ticket used as acceptance criteria. `--ticket <id-or-path>` overrides; see [Ticket files](#ticket-files) | `null` |
-| `repositoryContext` | Nearby docs for local patterns and invariants | `null` |
-| `rules.disabled` / `rules.severityOverrides` | Tune noisy rules | none |
-| `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
-| `report.outputDir` | Where reports are written | `.bug-hunter/reports` |
-
-### Re-runs are cached
-
-When nothing has changed since the last review (same commit, same base, same config and ticket, same tool version), Bug Hunter returns the earlier report instead of repeating the review. Results are kept in `.swag-scan/cache/` (add it to `.gitignore`). Nothing is cached while you have uncommitted changes, and asking for a fresh run (`--fresh`) skips the cache for every selected agent, so all of them review again. The cache is per agent: if only the ticket changed, only the agents that read the ticket (the Analyst) review again, and the others report "Reused the earlier review of this commit". The dashboard and report count their earlier findings and label them as reused.
-
-### Ticket files
-
-Bug Hunter checks the change against a ticket's acceptance criteria. It needs no configuration if the branch name holds a ticket ID (such as `feature/PROJ-123`) and it can find the ticket folder.
-
-- **Which ticket:** `--ticket PROJ-123` (an ID) or `--ticket path/to/file.md` (a path, inside or outside the repo). With neither, the ID is taken from the branch name. A `--ticket` you typed that cannot be found (a wrong path or an unknown ID) stops the run before any model review, with the reason and, for a path, the closest real file it can find. A ticket guessed from the branch name that is missing only adds a one-line note.
-- **Where tickets live:** an ID is looked up as `PROJ-123.md` or `.txt` (or `PROJ-123-any-title.md`) in the first of: `--ticket-dir`, the `SWAG_SCAN_TICKET_DIR` environment variable, `ticketFolder` in `~/.swag-scan/settings.json` (a per-user file, outside any repo), or `ticketContext.path` in the repo's config. There is no built-in default folder.
-- **What reviewers see:** only the title, the description and the acceptance criteria. Implementation or development logs, notes and any other section are removed, because they describe what was built and would bias the review. The report names the sections that were left out. A ticket with no headings is passed whole, with a note.
-- **Format assumed (tolerant, markdown):**
-
-  ```markdown
-  # PROJ-123: Add login
-
-  Free text or a "## Description" section.
-
-  ## Acceptance Criteria
-  | # | Title | Description | Repository | Status |
-  |---|-------|-------------|------------|--------|
-  | 1 | Login form | Shows email and password | web-app | 🔲 Todo |
-
-  ## Repositories
-  - web-app: feature/PROJ-123
-  - api (feature/PROJ-123, base develop)
-  ```
-
-  Table columns may be in any order and any subset, and bullets, numbered items or checkboxes also work for criteria. Status is `🔲 Todo`, `✅ Done` or `🔮 Future` (words such as "done" are understood). Repositories can be a table, or bullets like `name: branch`, `name (branch, base ref)` or `name @ branch`. Status and repositories are parsed for the later consolidated report and multi-repo runs; reviewers are not given the status.
-
-## Code Sweeper
-
-Checks changed code for long lines and functions, nested conditionals, heavy boolean logic, long comments, duplication, loose types, oversized files, and weak tests (`SWEEP-101` to `SWEEP-112`).
-
-Auto-fix is on by default for clear, low-risk findings. Dusty findings are never auto-fixed, and test removal stays off until you set `tests.removeLowValue` in `config.json`.
-
-| Setting | Purpose | Default |
-| --- | --- | --- |
-| `autoFix.enabled` | Fix clear, low-risk 🔴 findings (`--no-fix` overrides per run) | `true` |
-| `tests.removeLowValue` | Allow removing low-value tests | `false` |
-| `scan.exclude` / `scan.testFiles.patterns` | Files skipped, and paths treated as tests | see config |
-| `scan.thresholds` | Review heuristics, not hard style rules | see config |
-
-## Security Auditor
-
-Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Coverage is heuristic, not exhaustive. A basic pass reviews common implementation risks (`CRIT-1xx`, `CRIT-2xx`), then an advanced pass looks at attack paths and architecture.
-
-| Setting | Purpose | Default |
-| --- | --- | --- |
-| `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
-| `scan.projectStack` | `backend`, `frontend`, `full-stack`, or `unknown` | `backend` |
-| `scope.maxRelatedFiles` / `maxRelationshipHops` | How far review follows related code | `5` / `1` |
-
-## Model roles
-
-Bug Hunter and Security Auditor run two passes. `models.<agent>.basic` and `.advanced` pick a model for each pass on the agent you're using (`claude` or `copilot`). `null` or a missing entry uses the agent's default model, and without model-selectable subagents the agent does both passes itself.
-
-| Agent | `basic` | `advanced` |
-| --- | --- | --- |
-| `claude` | `haiku` | `sonnet` |
-| `copilot` | `null` | `null` |
-
-**Migrating:** earlier versions used a flat `models.basic` / `models.advanced`. That shape is no longer read. Move the values under your agent, for example `models.claude.basic`.
-
-## Tests
-
-Both Node 22 and 24 run in CI. No third-party dependencies.
-
-```bash
-node --test \
-  "skills/bug-hunter/test/*.test.mjs" \
-  "skills/code-sweeper/test/*.test.mjs" \
-  "skills/security-auditor/test/*.test.mjs" \
-  "skills/review-tools-common/test/*.test.mjs"
-```
+| [docs/TRANSPARENCY.md](docs/TRANSPARENCY.md) | Every command, read and write, and how to verify them |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | Findings format, event log, rules, settings, ticket files, model roles, tests |
+| [Windows and the VS Code extension](docs/REFERENCE.md#windows-and-the-vs-code-extension) | Finding `claude` when it is not on your PATH |
+| [GitHub Copilot (experimental)](docs/REFERENCE.md#github-copilot-experimental-not-part-of-the-plugin) | The three skills only; the crew, report and live view are Claude Code only for now |
 
 ## Feedback
 
