@@ -1,6 +1,6 @@
 // Ticket handling shared by the review tools: find the ticket file, parse it tolerantly, and hand reviewers
 // only what they should see (the description and the acceptance criteria), never a development log.
-// The assumed ticket format is documented in the root README ("Ticket files").
+// The assumed ticket format is documented in docs/REFERENCE.md ("Ticket files").
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
