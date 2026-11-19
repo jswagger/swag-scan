@@ -5,7 +5,7 @@
 //
 // The ticket is found from --ticket (an ID such as PROJ-123, or a path to a file), else ticketContext.ticketName,
 // else the ticket ID in the branch name. A bare ID is looked up in the ticket folder: --ticket-dir,
-// $SWAG_SCAN_TICKET_DIR, "ticketFolder" in ~/.swag-scan/settings.json, then ticketContext.path.
+// $SWAG_SCAN_TICKET_DIR, "ticketSourcePath" (older name "ticketFolder") in ~/.swag-scan/settings.json, then ticketContext.path.
 // Reviewers receive only the ticket's description and acceptance criteria (see review-tools-common/ticket.mjs).
 //
 // Repository context searches from each changed file's folder up to the repository root.
@@ -134,7 +134,7 @@ export function gatherTicketContext(settings, ticketOverride, options = {}) {
   } else {
     if (/[\\/]/.test(ticketName)) return nothing(['A configured ticket name must not contain path separators.']);
     if (!folder) {
-      return nothing([`Cannot look up ${ticketName}: no ticket folder is set. Use --ticket-dir, SWAG_SCAN_TICKET_DIR, "ticketFolder" in ~/.swag-scan/settings.json, or ticketContext.path.`]);
+      return nothing([`Cannot look up ${ticketName}: no ticket folder is set. Run /swag-scan:config to set the ticket folder, or use --ticket-dir, SWAG_SCAN_TICKET_DIR, or ticketContext.path.`]);
     }
     path = findTicketFile(folder.path, ticketName);
     if (!path) {

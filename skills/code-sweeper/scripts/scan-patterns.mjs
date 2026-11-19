@@ -9,9 +9,14 @@ const configPath = new URL('../config.json', import.meta.url);
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const { isExcluded, isTestFile } = createFileFilters(config.scan);
 const thresholds = config.scan?.thresholds ?? {};
-const scannerArgs = process.argv.slice(2);
-if (scannerArgs.some((argument) => !['--no-fix', '--dry-run', 'dry-run'].includes(argument))) {
-  process.stderr.write('Usage: scan-patterns.mjs [--no-fix|--dry-run]\n');
+const rawArgs = process.argv.slice(2);
+// --max-file-lines <n> replaces scan.thresholds.maxFileLines for this run (Swag Scan passes the user's setting).
+const limitFlag = rawArgs.indexOf('--max-file-lines');
+const maxFileLinesOverride = limitFlag === -1 ? undefined : Number(rawArgs[limitFlag + 1]);
+const scannerArgs = limitFlag === -1 ? rawArgs : rawArgs.filter((_, index) => index !== limitFlag && index !== limitFlag + 1);
+if (scannerArgs.some((argument) => !['--no-fix', '--dry-run', 'dry-run'].includes(argument))
+  || (limitFlag !== -1 && !(Number.isInteger(maxFileLinesOverride) && maxFileLinesOverride > 0))) {
+  process.stderr.write('Usage: scan-patterns.mjs [--no-fix|--dry-run] [--max-file-lines <n>]\n');
   process.exit(1);
 }
 const autoFixEnabled = config.autoFix?.enabled === true
@@ -497,7 +502,7 @@ for (const file of report.files) {
   const addedCount = added.length;
   const removedCount = (file.changes ?? []).filter((change) => change.side === 'removed').length;
   const sourceLines = getSourceLines(file);
-  const fileLineLimit = thresholds.maxFileLines ?? 500;
+  const fileLineLimit = maxFileLinesOverride ?? thresholds.maxFileLines ?? 500;
   if (/\.(?:[cm]?[jt]sx?|py|java|cs|go|rs|rb|php)$/i.test(file.path)
     && sourceLines.length > fileLineLimit
     && addedCount > removedCount

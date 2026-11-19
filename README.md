@@ -61,21 +61,31 @@ You need [Claude Code](https://claude.com/claude-code), Node 22 or 24, and git. 
 /plugin install swag-scan@swag-scan
 ```
 
-Restart Claude Code after installing. The plugin has no pinned version: every commit on `main` counts as a new version, so `/plugin marketplace update swag-scan` (or the plugin manager's update) picks up the latest fixes.
+Restart Claude Code after installing. The plugin is versioned (see [CHANGELOG.md](CHANGELOG.md); below 1.0 while in beta) and each merged pull request raises the version, so `/plugin marketplace update swag-scan` (or the plugin manager's update) picks up the latest fixes.
 
 ## Quick start
 
-Check out the branch you want reviewed (committed, and ahead of the branch it will merge into), start Claude Code **inside that repository**, and run:
+Check out the branch you want reviewed (committed, and ahead of the branch it will merge into), start Claude Code **inside that repository**, and set up the config once:
 
 ```
-/swag-scan:swag-scan [base-ref] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh] [--no-live]
+/swag-scan:config
 ```
 
-- `base-ref`: the branch this one will merge into, such as `origin/main`. Leave it off and Swag Scan detects it.
-- `--ticket`: a ticket ID or file path, so the Analyst can check the change against acceptance criteria. See [Ticket files](docs/REFERENCE.md#ticket-files).
-- `--agents`: run only some of the crew.
-- `--fresh`: ignore earlier results for this commit and review again.
-- `--no-live`: skip the live view. See [Live view](docs/REFERENCE.md#live-view-dashboard).
+It asks five quick questions and saves the answers in `~/.swag-scan/settings.json`, so they apply to every repository. Then run a review with your ticket ID:
+
+```
+/swag-scan:run ID-123
+```
+
+Run `/swag-scan:run` before the config exists and it stops with "Please set up your config file first. Run /swag-scan:config to get started." The config holds:
+
+- `ticketSourcePath`: the folder with your Jira XML exports. `ID-123` is read from `ID-123.xml` there. See [Ticket files](docs/REFERENCE.md#ticket-files).
+- `targetBranch` (default `main`): the branch your changes are compared against.
+- `liveDashboard` (default on): open the live view while a scan runs. See [Live view](docs/REFERENCE.md#live-view-dashboard).
+- `autoFix` (default off): let the Inspector fix clear, low-risk cleanup items.
+- `maxFileLines` (default `1000`): the Code Sweeper flags a changed file that is longer than this.
+
+Optional extras after the ticket ID: `--agents analyst,security-guard` runs only some of the crew, and `--fresh` ignores earlier results for this commit and reviews again.
 
 Scripts scan first (no model, no edits). The Analyst, Inspector and Security Guard then review in parallel, for the ones that have leads. A reviewer with no leads is skipped, and the report says "no leads", never "clean". Reports are saved to `.swag-scan/reports/<commit>/` as `report.md` and `report.html`. You can also ask for one reviewer by name, for example `@agent-swag-scan:security-guard`.
 
@@ -84,10 +94,10 @@ To cut permission prompts, add `Bash(swag-scan *)` to your allowed commands. Eve
 ## First run in a new repository
 
 1. **Start Claude inside the repository you are reviewing** (`cd` first). The reviewers read `.swag-scan/run/summary.json` relative to where the session started, and their writes are limited to `.swag-scan/` there. Reviewing a second repository means a second session started in it.
-2. **Check the base.** It should be the branch this one will merge into, which is not always the default branch. Compare `git diff --stat <base>...HEAD` with what you expect. Swag Scan warns when another base makes the change much smaller, but only you know the real target.
+2. **Check the target branch.** `targetBranch` in the config should be the branch this one will merge into, which is not always `main`. Change it any time with `/swag-scan:config`. Compare `git diff --stat <base>...HEAD` with what you expect. Swag Scan warns when another base makes the change much smaller, but only you know the real target.
 3. **Keep the tool's folder out of `git status`** by adding `.swag-scan/` to `.git/info/exclude` (local only, nothing to commit).
 4. **Look at the scan summary before the reviewers run.** It shows how many files came from the branch diff and how many are untracked. Untracked, non-ignored text files are scanned, so a local folder of data files can swamp the real change. If you see a warning, add that folder to `.git/info/exclude` and run again.
-5. **Point to the ticket** with `--ticket <path>` or a `ticketFolder` in `~/.swag-scan/settings.json`, if the work has one. To get a ticket from Jira, open it, choose **Export**, then **Export XML**, and save the page with Ctrl+S (Cmd+S on Mac) as `ID-123.xml` in your ticket folder. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
+5. **Point to the ticket folder** with `ticketSourcePath` in the config (`/swag-scan:config` asks for it), if the work has a ticket. To get a ticket from Jira, open it, choose **Export**, then **Export XML**, and save the page with Ctrl+S (Cmd+S on Mac) as `ID-123.xml` in your ticket folder. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
 
 ## More
 

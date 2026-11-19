@@ -18,11 +18,11 @@ Review additions and revisions for adherence to clean coding practices. A script
 
 Read [config.json](./config.json) first.
 
-- `autoFix.enabled` (default `true`): fix clear, low-risk 🔴 Unclean findings. `--no-fix` or `dry-run` disables all edits for this run without changing the config.
+- `autoFix.enabled` (default `false`): fix clear, low-risk 🔴 Unclean findings. When Swag Scan runs you, the user's `autoFix` setting from `/swag-scan:config` (saved in `.swag-scan/run/summary.json` under `settings.autoFix`) decides instead of this value. `--no-fix` or `dry-run` disables all edits for this run without changing the config.
 - `tests.removeLowValue` (default `false`): when `false`, only suggest test removals. When `true`, remove a test only if its lack of long-term value is clear from the test and its directly related behavior. Never delete a test because of a scanner match alone.
 - `scan.exclude`: patterns omitted during collection and scanning. Defaults cover generated JS/TS artifacts and common prose and data files (`.txt`, `.json`, CSV, XML, YAML, TOML, databases). Adjust them when those files are part of the review.
 - `scan.testFiles.patterns`: paths treated as tests for the test-value review.
-- `scan.thresholds`: review heuristics, not hard style rules. A long function that already existed is reported only when `minFunctionChangeLines` (default 20) of its lines were added or its first line is new, and a long file only when it is new, just crossed `maxFileLines`, or grew by `minFileGrowthLines` (default 50). This keeps pre-existing size out of the way of the change under review.
+- `scan.thresholds`: review heuristics, not hard style rules. A long function that already existed is reported only when `minFunctionChangeLines` (default 20) of its lines were added or its first line is new, and a long file only when it is new, just crossed `maxFileLines`, or grew by `minFileGrowthLines` (default 50). When Swag Scan runs the scan, the user's `maxFileLines` setting (default 1000) replaces the value here. This keeps pre-existing size out of the way of the change under review.
 
 ## Procedure
 
@@ -45,7 +45,7 @@ node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$CFG" [base-ref] \
    - **Comments:** comments that narrate obvious code or repeat outdated behavior. Keep comments that explain intent, constraints, or non-obvious decisions. Report commented-out code and stale `TODO`/`FIXME` notes the diff adds as 🟡 Dusty; never auto-fix them.
    - **Tests:** whether added or changed tests verify meaningful behavior and add distinct coverage. Prefer recommending removal unless `tests.removeLowValue` is enabled and the test is plainly obsolete or redundant.
 4. **Keep related-code inspection narrow.** Start with changed lines and their immediate context. Open another file only for a concrete reuse or behavior question.
-5. **Auto-fix** only when `autoFix.enabled` is `true` and `--no-fix`/`dry-run` was not given. For each 🔴 finding inside a function:
+5. **Auto-fix** only when auto-fix is on (`settings.autoFix` in `.swag-scan/run/summary.json` when Swag Scan ran the scan, else `autoFix.enabled`) and `--no-fix`/`dry-run` was not given. For each 🔴 finding inside a function:
    1. Was the function new in this diff? If so, it is eligible.
    2. If it already existed, search tracked files with the same source extension for whole-word references to its name, excluding changed files. Any outside reference means downgrade the finding to 🟡 Dusty and do not fix it.
    3. Preserve behavior and public APIs.

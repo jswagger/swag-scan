@@ -83,7 +83,7 @@ test('lookup finds ID.xml and renamed downloads, and Word and Excel files point 
 
 test('gatherTicketContext reads ID-123.xml from the settings folder', (context) => {
   const directory = folder(context, { 'ID-123.xml': ESCAPED, 'ID-4.xls': '<html>' });
-  const userSettings = { ticketFolder: directory };
+  const userSettings = { ticketSourcePath: directory };
   const found = gatherTicketContext(undefined, 'ID-123', { userSettings, branch: 'main' });
   assert.equal(found.found, true);
   assert.equal(found.title, 'ID-123: Add checkout retry');
@@ -95,7 +95,7 @@ test('gatherTicketContext reads ID-123.xml from the settings folder', (context) 
 
 test('a broken XML file is a note, not a crash', (context) => {
   const directory = folder(context, { 'ID-5.xml': '<html>not jira</html>' });
-  const note = gatherTicketContext(undefined, 'ID-5', { userSettings: { ticketFolder: directory }, branch: 'main' }).notes[0];
+  const note = gatherTicketContext(undefined, 'ID-5', { userSettings: { ticketSourcePath: directory }, branch: 'main' }).notes[0];
   assert.match(note, /does not look like a Jira XML export/);
 });
 
