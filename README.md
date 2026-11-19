@@ -61,7 +61,7 @@ You need [Claude Code](https://claude.com/claude-code), Node 22 or 24, and git. 
 /plugin install swag-scan@swag-scan
 ```
 
-Restart Claude Code after installing. The plugin has no pinned version: every commit on `main` counts as a new version, so `/plugin marketplace update swag-scan` (or the plugin manager's update) picks up the latest fixes.
+Restart Claude Code after installing. The plugin is versioned (see [CHANGELOG.md](CHANGELOG.md); below 1.0 while in beta) and each merged pull request raises the version, so `/plugin marketplace update swag-scan` (or the plugin manager's update) picks up the latest fixes.
 
 ## Quick start
 
