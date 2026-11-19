@@ -13,7 +13,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { findTicketFile, looksLikePath, parseTicket, resolveTicketFolder, ticketIdFromBranch } from '../../review-tools-common/ticket.mjs';
+import { findTicketFile, findUnreadableTicket, looksLikePath, parseTicket, readTicketText, resolveTicketFolder, TicketFileError, ticketIdFromBranch, unreadableTicketMessage } from '../../review-tools-common/ticket.mjs';
 import { isMain, loadConfig, parseArgs, readJsonInput, runCli } from './lib/common.mjs';
 
 const MAX_REPOSITORY_CONTEXT_FILES = 5;
@@ -139,11 +139,19 @@ export function gatherTicketContext(settings, ticketOverride, options = {}) {
     path = findTicketFile(folder.path, ticketName);
     if (!path) {
       const where = existsSync(folder.path) ? folder.path : `${folder.path} (folder not found)`;
-      return nothing([`No ${ticketName}.md or ${ticketName}.txt found in ${where} (folder from ${folder.source}).`]);
+      const unreadable = findUnreadableTicket(folder.path, ticketName);
+      if (unreadable) return nothing([`Found ${unreadable} in ${where}. ${unreadableTicketMessage(unreadable, ticketName)}`]);
+      return nothing([`No ${ticketName}.xml, ${ticketName}.md or ${ticketName}.txt found in ${where} (folder from ${folder.source}).`]);
     }
   }
 
-  const parsed = parseTicket(readFileSync(path, 'utf8'));
+  let parsed;
+  try {
+    parsed = parseTicket(readTicketText(path));
+  } catch (error) {
+    if (error instanceof TicketFileError) return nothing([error.message]);
+    throw error;
+  }
   const lines = parsed.review.split(/\r?\n/);
   const truncated = lines.length > maxLines;
   return {

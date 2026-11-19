@@ -4,11 +4,14 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { basename, extname, isAbsolute, join, resolve } from 'node:path';
 
 const TICKET_ID = /(?<![A-Za-z0-9])([A-Z][A-Z0-9]+-\d+)(?!\d)/;
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
-const TICKET_EXTENSIONS = ['.md', '.txt'];
+const TICKET_EXTENSIONS = ['.xml', '.md', '.txt'];
+// Word and Excel files (Jira's own "Export Word" and "Export Excel" included) are not read: a real one needs a library
+// and Swag Scan has none. They are recognized only to give a helpful message that points to Export XML.
+const UNREADABLE_EXTENSIONS = ['.xls', '.xlsx', '.doc', '.docx'];
 
 /** "feature/PROJ-123-add-login" gives "PROJ-123". Jira-style keys only, so "bugfix-2" is not a ticket. */
 export function ticketIdFromBranch(branch) {
@@ -48,7 +51,7 @@ function isFile(path) {
   }
 }
 
-/** Finds `<id>.md` or `<id>.txt` (any letter case), then `<id>-anything.md`. */
+/** Finds `<id>.xml`, `<id>.md` or `<id>.txt` (any letter case), then `<id>-anything.xml` and the like. */
 export function findTicketFile(folder, id) {
   if (!existsSync(folder)) return undefined;
   const names = readdirSync(folder).sort();
@@ -62,9 +65,167 @@ export function findTicketFile(folder, id) {
   return name && join(folder, name);
 }
 
+/** A Word or Excel export of this ticket (`<id>.xls`, `.xlsx`, `.doc`, `.docx`), if the folder has one. Only used to explain why it cannot be read. */
+export function findUnreadableTicket(folder, id) {
+  if (!existsSync(folder)) return undefined;
+  const wanted = id.toLowerCase();
+  return readdirSync(folder).sort().find((name) => UNREADABLE_EXTENSIONS.some((extension) => name.toLowerCase() === `${wanted}${extension}`));
+}
+
+/** The sentence shown when a Word or Excel export is found where a ticket is expected. */
+export function unreadableTicketMessage(fileName, id) {
+  return `${fileName} is a Word or Excel export, which Swag Scan cannot read (it uses no third-party libraries). In Jira, open the ticket, choose Export, then Export XML, and save it as ${id}.xml in the same folder.`;
+}
+
 /** Looks like a path rather than a bare ticket name. */
 export function looksLikePath(value) {
-  return /[\\/]/.test(value) || TICKET_EXTENSIONS.some((extension) => value.toLowerCase().endsWith(extension));
+  return /[\\/]/.test(value) || [...TICKET_EXTENSIONS, ...UNREADABLE_EXTENSIONS].some((extension) => value.toLowerCase().endsWith(extension));
+}
+
+/** Raised when a ticket file exists but cannot be used. The message is shown to the user as is. */
+export class TicketFileError extends Error {}
+
+// --- Jira XML ("Export XML" on a ticket) -----------------------------------------------------------------
+
+const XML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+/** Decodes the five XML entities, plus &nbsp; and numeric ones. One pass only, so "&amp;lt;" stays "&lt;". */
+function decodeEntities(text) {
+  return text.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (whole, decimal, hex, name) => {
+    if (decimal || hex) {
+      const code = decimal ? Number(decimal) : Number.parseInt(hex, 16);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+    }
+    return XML_ENTITIES[name.toLowerCase()] ?? whole;
+  });
+}
+
+/** HTML to plain text, keeping what matters to a reviewer: line breaks, bullets, and headings as markdown headings. */
+export function htmlToText(html) {
+  const lists = []; // the open <ul>/<ol> lists, so nested items are indented and numbered lists are numbered
+  const text = html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<h[1-6]\b[^>]*>/gi, '\n\n### ')
+    .replace(/<(\/?)(ul|ol|li)\b[^>]*>/gi, (_, close, tag) => {
+      const name = tag.toLowerCase();
+      if (name === 'li') {
+        if (close) return '\n';
+        const list = lists.at(-1);
+        if (!list) return '\n- ';
+        list.count += 1;
+        return `\n${'  '.repeat(lists.length - 1)}${list.ordered ? `${list.count}. ` : '- '}`;
+      }
+      if (!close) {
+        lists.push({ ordered: name === 'ol', count: 0 });
+        return '\n';
+      }
+      lists.pop();
+      return lists.length ? '\n' : '\n\n';
+    })
+    .replace(/<\/(?:p|h[1-6]|blockquote)>/gi, '\n\n') // a paragraph or heading ends with a blank line
+    .replace(/<\/(?:div|tr|table|pre)>/gi, '\n')
+    .replace(/<\/t[dh]>/gi, ' ')
+    .replace(/<[^>]*>/g, '');
+  return decodeEntities(text)
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/, ''))
+    .join('\n')
+    .replace(/^(\s*(?:- |\d+\. ).*)\n\n(?=\s*(?:- |\d+\. ))/gm, '$1\n') // no blank lines between items of one list
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * The text inside one XML element's content. Jira stores a rich-text field in one of three ways, depending on its
+ * version: HTML in a CDATA block, HTML escaped as entities, or the HTML tags written straight into the XML.
+ */
+function richText(raw = '') {
+  const trimmed = raw.trim();
+  const cdata = /^<!\[CDATA\[([\s\S]*)\]\]>$/.exec(trimmed);
+  if (cdata) return htmlToText(cdata[1]);
+  if (/<[a-z/]/i.test(trimmed)) return htmlToText(trimmed); // tags written straight into the XML
+  return htmlToText(decodeEntities(trimmed)); // escaped: decode once to get the HTML, then read it
+}
+
+const elementText = (block, name) => new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`, 'i').exec(block)?.[1];
+/** Parts of an issue that are never read: they hold comments, links and the like, which describe work rather than requirements. */
+const IGNORED_BLOCKS = /<(comments|customfields|attachments|issuelinks|subtasks|labels|components|fixVersion|version)\b[\s\S]*?<\/\1>/gi;
+
+const toBullet = (line) => `- ${line.replace(/^(?:[*#-]|\d+[.)])\s*/, '').trim()}`;
+
+/** A line that is only the words "Acceptance Criteria" (bold, with a colon, or not) becomes a heading, so the criteria that follow are found. */
+function markAcceptanceHeading(text) {
+  return text.split('\n').map((line) => (/^\W*acceptance criteria\W*$/i.test(line) ? '\n### Acceptance Criteria\n' : line)).join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * The lines of an Acceptance Criteria field. Nested list items keep their indent. Once the list has started, a line
+ * that is not an item and ends with a colon ("Testing Notes:") begins a separate part, which is kept under its own
+ * section instead of being counted as a criterion.
+ */
+function criteriaLines(text) {
+  const out = [];
+  let seenList = false;
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    const item = /^(\s*)(?:- |\d+\. )(.*)$/.exec(line);
+    if (item) {
+      seenList = true;
+      out.push(item[1] ? `${item[1]}- ${item[2]}` : toBullet(line));
+    } else if (seenList && /:\s*$/.test(line) && line.length < 60) {
+      const title = line.replace(/^\W+|[:\s]+$/g, '');
+      out.push(`\n## ${title}\n`); // a top-level section, so the parser leaves it out of the criteria
+    } else {
+      out.push(toBullet(line));
+    }
+  }
+  return out;
+}
+
+/**
+ * Turns one issue from a Jira "Export XML" file into the markdown the ticket parser reads: title, description and
+ * acceptance criteria. Only the key, summary, description and any custom field named like "Acceptance Criteria" are
+ * used. `id` picks the issue when the file holds several (a search export); a one-issue file needs no match.
+ */
+export function jiraXmlToTicketMarkdown(text, id) {
+  const items = text.match(/<item\b[\s\S]*?<\/item>/gi) ?? [];
+  if (!items.length) throw new TicketFileError('This does not look like a Jira XML export (no issue found in it). In Jira, open the ticket and choose Export, then Export XML.');
+  const keyOf = (item) => decodeEntities((elementText(item.replace(IGNORED_BLOCKS, ''), 'key') ?? '').trim());
+  let item = id ? items.find((entry) => keyOf(entry).toLowerCase() === id.toLowerCase()) : undefined;
+  if (!item && items.length === 1) [item] = items;
+  if (!item) throw new TicketFileError(`${id} is not in this XML, which holds ${items.length} issues. Check the ticket ID or export just that ticket.`);
+
+  const head = item.replace(IGNORED_BLOCKS, '');
+  const key = keyOf(item) || id || '';
+  const titleText = decodeEntities((elementText(head, 'title') ?? '').trim()).replace(/^\[[^\]]*\]\s*/, '');
+  const summary = decodeEntities((elementText(head, 'summary') ?? '').trim()) || titleText;
+  const description = markAcceptanceHeading(richText(elementText(head, 'description')));
+
+  const criteria = [];
+  for (const field of item.match(/<customfield\b[\s\S]*?<\/customfield>/gi) ?? []) {
+    if (!/acceptance/i.test(decodeEntities(elementText(field, 'customfieldname') ?? ''))) continue;
+    for (const value of field.match(/<customfieldvalue\b[\s\S]*?<\/customfieldvalue>/gi) ?? []) {
+      criteria.push(...criteriaLines(richText(elementText(value, 'customfieldvalue'))));
+    }
+  }
+
+  const lines = [`# ${[key, summary].filter(Boolean).join(': ') || 'Ticket'}`, ''];
+  if (description) lines.push('## Description', '', description, '');
+  if (criteria.length) lines.push('## Acceptance Criteria', '', ...criteria, '');
+  return lines.join('\n');
+}
+
+/**
+ * The text of a ticket file, ready for parseTicket. A Jira XML export is converted; markdown and text are read as
+ * they are. Throws TicketFileError with a plain sentence when the file cannot be used.
+ */
+export function readTicketText(path) {
+  const extension = extname(path).toLowerCase();
+  const id = TICKET_ID.exec(basename(path))?.[1];
+  if (UNREADABLE_EXTENSIONS.includes(extension)) throw new TicketFileError(unreadableTicketMessage(basename(path), id ?? basename(path, extname(path))));
+  const text = readFileSync(path, 'utf8');
+  return extension === '.xml' ? jiraXmlToTicketMarkdown(text, id) : text;
 }
 
 // --- parsing ---------------------------------------------------------------------------------------------
