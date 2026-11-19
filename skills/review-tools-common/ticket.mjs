@@ -5,6 +5,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, extname, isAbsolute, join, resolve } from 'node:path';
+import { settingsPath } from './settings.mjs';
 
 const TICKET_ID = /(?<![A-Za-z0-9])([A-Z][A-Z0-9]+-\d+)(?!\d)/;
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
@@ -22,11 +23,10 @@ function expandHome(path, home) {
   return path === '~' || path.startsWith('~/') ? join(home, path.slice(1)) : path;
 }
 
-/** User-level settings live outside the repo: $SWAG_SCAN_SETTINGS, else ~/.swag-scan/settings.json. */
+/** User-level settings live outside the repo: $SWAG_SCAN_SETTINGS, else ~/.swag-scan/settings.json (see settings.mjs). */
 export function loadUserSettings(env = process.env, home = homedir()) {
-  const path = env.SWAG_SCAN_SETTINGS ? resolve(env.SWAG_SCAN_SETTINGS) : join(home, '.swag-scan', 'settings.json');
   try {
-    return JSON.parse(readFileSync(path, 'utf8'));
+    return JSON.parse(readFileSync(settingsPath(env, home), 'utf8'));
   } catch {
     return {};
   }
@@ -37,7 +37,7 @@ export function resolveTicketFolder({ flag, env = process.env, home = homedir(),
   const settings = userSettings ?? loadUserSettings(env, home);
   const choice = flag ? { path: flag, source: '--ticket-dir' }
     : env.SWAG_SCAN_TICKET_DIR ? { path: env.SWAG_SCAN_TICKET_DIR, source: 'SWAG_SCAN_TICKET_DIR' }
-    : settings.ticketFolder ? { path: settings.ticketFolder, source: 'user settings' }
+    : settings.ticketSourcePath || settings.ticketFolder ? { path: settings.ticketSourcePath || settings.ticketFolder, source: 'user settings' }
     : repoPath ? { path: repoPath, source: 'repo config' }
     : undefined;
   return choice && { ...choice, path: resolve(expandHome(choice.path, home)) };

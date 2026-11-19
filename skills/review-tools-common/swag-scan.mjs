@@ -2,11 +2,14 @@
 // Swag Scan orchestrator: one fixed entry point that runs every agent's scripts in a fixed order, with no model
 // deciding what to run. Pass 1 is scripts only (no model tokens) and changes no files; its findings are "leads".
 //
-// Usage: swag-scan.mjs run [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>]
+// Usage: swag-scan.mjs run [<ticket-id>] [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>]
 //                          [--agents analyst,inspector,security-guard] [--fresh] [--json]
+//        swag-scan.mjs config [show|get <key>|set <key> <value>...|path] [--json]   (the user-level config, see settings.mjs)
 //        swag-scan.mjs report [--repo <dir>] [--json]     (after the agents have saved their findings)
 //        swag-scan.mjs dashboard [--repo <dir>] [--watch] [--open]   (the live view page: .swag-scan/dashboard.html)
 //
+// `run` needs the config from /swag-scan:config. It reads targetBranch (the base), maxFileLines and autoFix from it;
+// --base and --ticket-dir stay as one-off overrides.
 // Results go to <repo>/.swag-scan/run/ (gitignored, replaced on every run): one JSON file per step and summary.json.
 // Exit code 0 means the scan ran (even if it found nothing); 1 means it could not run, with one plain sentence why.
 
@@ -18,6 +21,7 @@ import { checkCache } from './cache.mjs';
 import { emit } from './events.mjs';
 import { DASHBOARD_FILE, watchDashboard, writeDashboard } from './dashboard.mjs';
 import { writeReport } from './report.mjs';
+import { loadSettings, parseSetting, renderSettings, saveSettings, SETTING_KEYS, SETUP_MESSAGE, SettingsError } from './settings.mjs';
 import { looksLikePath, scopeCriteria } from './ticket.mjs';
 
 const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
@@ -91,7 +95,7 @@ export function suggestTicketPath(missing, repo) {
 function missingTicketMessage(ticket, note, repo) {
   const reason = (note ?? `Could not find ticket ${ticket}.`).replace(/\.$/, '');
   const guess = looksLikePath(ticket) ? suggestTicketPath(ticket, repo) : undefined;
-  return `${reason}. The scan did not start, so nothing was spent on it.${guess ? ` Did you mean ${guess}?` : ''} Fix the --ticket value, or leave --ticket out to scan without a ticket.`;
+  return `${reason}. The scan did not start, so nothing was spent on it.${guess ? ` Did you mean ${guess}?` : ''} Check the ticket ID, or run /swag-scan:config if the ticket folder is wrong. Leave the ticket out to scan without one.`;
 }
 
 /** How many findings an earlier, reused review had: read from the findings file the cache kept. Undefined if unreadable. */
@@ -106,7 +110,7 @@ function cachedFindingCount(reports) {
 }
 
 /** Runs one tool's script pipeline for a repo. Returns what the summary needs; writes each step's JSON to `runDir`. */
-function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir, fresh }) {
+function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir, fresh, maxFileLines, autoFix }) {
   const skill = join(SKILLS_DIR, tool);
   const config = join(skill, 'config.json');
   const scripts = join(skill, 'scripts');
@@ -193,7 +197,7 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
     if (packets.omitted?.length) result.omittedPackets = packets.omitted.length;
   } else {
     // Code Sweeper and Security Auditor read the collector JSON on stdin. Code Sweeper never edits here (--no-fix).
-    const args = tool === 'code-sweeper' ? ['--no-fix'] : [];
+    const args = tool === 'code-sweeper' ? ['--no-fix', ...(maxFileLines ? ['--max-file-lines', String(maxFileLines)] : [])] : [];
     result.files.scan = save('scan', node(join(scripts, 'scan-patterns.mjs'), args, { cwd: repo, input: diffText }));
     progress('scan');
     const scan = read('scan');
@@ -202,7 +206,7 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
   }
 
   try {
-    const cache = checkCache({ tool, configPath: config, diffPath: result.files.diff, contextPath, repo, fresh });
+    const cache = checkCache({ tool, configPath: config, diffPath: result.files.diff, contextPath, repo, fresh, extraKey: tool === 'code-sweeper' ? JSON.stringify({ maxFileLines, autoFix }) : '' });
     result.cache = { hit: cache.hit, cacheable: cache.cacheable, key: cache.key, reason: cache.reason, ...(cache.hit ? { reports: cache.entry.reports, summary: cache.entry.summary, findings: cachedFindingCount(cache.entry.reports) } : {}) };
   } catch (error) {
     result.cache = { hit: false, cacheable: false, key: null, reason: `Cache unavailable: ${error.message}` };
@@ -250,7 +254,7 @@ function refreshDashboardPage(swagDir) {
 }
 
 /** Runs the scan. `log` receives one progress line per agent as it finishes. */
-export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents, fresh = false, log = () => {}, now = () => Date.now() } = {}) {
+export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents, fresh = false, settings, log = () => {}, now = () => Date.now() } = {}) {
   const started = now();
   const root = git(resolve(repo), ['rev-parse', '--show-toplevel']);
   if (!root) throw new PlainError(`${resolve(repo)} is not a git repository, so there is nothing to scan.`);
@@ -276,7 +280,7 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
     emit(runDir, { kind: 'started', agent: agent.id, phase: 'scan', step: index + 1, steps: crew.length });
     let result;
     try {
-      result = runTool({ tool: agent.tool, agentId: agent.id, repo: root, base, ticket, ticketDir, branch, runDir, fresh });
+      result = runTool({ tool: agent.tool, agentId: agent.id, repo: root, base, ticket, ticketDir, branch, runDir, fresh, maxFileLines: settings?.maxFileLines, autoFix: settings?.autoFix });
     } catch (error) {
       emit(runDir, { kind: 'error', agent: agent.id, phase: 'scan', label: error instanceof PlainError ? error.message : 'scan failed' });
       throw error;
@@ -296,6 +300,7 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
     head,
     mode: 'report-only',
     modelTokens: 0,
+    ...(settings ? { settings } : {}),
     base: first ? { ref: first.baseRef, autoDetected: first.autoDetected } : null,
     ticket: withTicket?.ticket,
     agents: results,
@@ -308,11 +313,12 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   return summary;
 }
 
-const USAGE = 'Usage: swag-scan.mjs run [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>] [--agents analyst,inspector,security-guard] [--fresh] [--json]\n       swag-scan.mjs report [--repo <dir>] [--json]\n       swag-scan.mjs dashboard [--repo <dir>] [--watch] [--open]';
+const USAGE = 'Usage: swag-scan.mjs run [<ticket-id>] [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>] [--agents analyst,inspector,security-guard] [--fresh] [--json]\n       swag-scan.mjs report [--repo <dir>] [--json]\n       swag-scan.mjs dashboard [--repo <dir>] [--watch] [--open]\n       swag-scan.mjs config [show|get <key>|set <key> <value>...|path] [--json]';
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  if (!['run', 'report', 'dashboard'].includes(command)) throw new PlainError(USAGE);
+  if (!['run', 'report', 'dashboard', 'config'].includes(command)) throw new PlainError(USAGE);
+  if (command === 'config') return parseConfigArgs(rest);
   const options = { command };
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
@@ -320,7 +326,8 @@ function parseArgs(argv) {
       if (i + 1 >= rest.length) throw new PlainError(`Missing value for ${arg}.`);
       return rest[(i += 1)];
     };
-    if (arg === '--repo') options.repo = value();
+    if (command === 'run' && i === 0 && !arg.startsWith('-')) options.ticket = arg;
+    else if (arg === '--repo') options.repo = value();
     else if (arg === '--json') options.json = true;
     else if (command === 'dashboard' && arg === '--watch') options.watch = true;
     else if (command === 'dashboard' && arg === '--open') options.open = true;
@@ -332,6 +339,57 @@ function parseArgs(argv) {
     else throw new PlainError(`Unknown option ${arg}.`);
   }
   return options;
+}
+
+function parseConfigArgs(rest) {
+  const options = { command: 'config', action: 'show', args: [] };
+  const words = [];
+  for (const arg of rest) {
+    if (arg === '--json') options.json = true;
+    else if (arg.startsWith('--')) throw new PlainError(`Unknown option ${arg}.`);
+    else words.push(arg);
+  }
+  if (words.length) {
+    options.action = words[0];
+    options.args = words.slice(1);
+  }
+  if (!['show', 'get', 'set', 'path'].includes(options.action)) throw new PlainError(`Unknown config action "${options.action}". Use show, get <key>, set <key> <value>, or path.`);
+  return options;
+}
+
+/**
+ * Loads the user's config for a run. Without a saved config the scan does not start (and costs nothing). The branch to
+ * compare against comes from `targetBranch`, unless --base is given. Returns the options runScan needs.
+ */
+export function prepareRun(options, { env = process.env, home } = {}) {
+  const loaded = loadSettings(env, home);
+  if (!loaded.configured) throw new PlainError(SETUP_MESSAGE);
+  const { targetBranch, liveDashboard, autoFix, maxFileLines } = loaded.values;
+  return { ...options, base: options.base ?? targetBranch, settings: { targetBranch, liveDashboard, autoFix, maxFileLines } };
+}
+
+/** `swag-scan config ...`: show, read one value, or save values. Returns the text to print. */
+export function configCommand({ action, args, json }, { env = process.env, home } = {}) {
+  const loaded = loadSettings(env, home);
+  if (action === 'path') return loaded.path;
+  if (action === 'get') {
+    if (args.length !== 1 || !SETTING_KEYS.includes(args[0])) throw new PlainError(`Usage: config get <key>. Keys: ${SETTING_KEYS.join(', ')}.`);
+    return String(loaded.values[args[0]]);
+  }
+  if (action === 'set') {
+    if (!args.length || args.length % 2) throw new PlainError(`Usage: config set <key> <value> [<key> <value> ...]. Keys: ${SETTING_KEYS.join(', ')}.`);
+    const updates = {};
+    for (let i = 0; i < args.length; i += 2) updates[args[i]] = args[i + 1];
+    try {
+      for (const [key, value] of Object.entries(updates)) parseSetting(key, value);
+      const saved = saveSettings(updates, env, home);
+      const lines = [json ? JSON.stringify({ configured: saved.configured, ...saved.values }, null, 2) : `Saved to ${saved.path}\n${renderSettings(saved)}`, ...saved.notes];
+      return lines.join('\n');
+    } catch (error) {
+      throw error instanceof SettingsError ? new PlainError(error.message) : error;
+    }
+  }
+  return json ? JSON.stringify({ path: loaded.path, configured: loaded.configured, ...loaded.values }, null, 2) : renderSettings(loaded);
 }
 
 /** Builds the consolidated report from the run folder. Writes report.md and report.json and returns the text. */
@@ -371,8 +429,10 @@ export async function dashboardScan({ repo = process.cwd(), watch = false, open 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const { command, json, ...options } = parseArgs(process.argv.slice(2));
-    if (command === 'run') {
-      const summary = runScan({ ...options, log: (line) => process.stderr.write(`${line}\n`) });
+    if (command === 'config') {
+      process.stdout.write(`${configCommand({ ...options, json })}\n`);
+    } else if (command === 'run') {
+      const summary = runScan({ ...prepareRun(options), log: (line) => process.stderr.write(`${line}\n`) });
       process.stdout.write(json ? `${JSON.stringify(summary, null, 2)}\n` : `${summary.text}\n`);
     } else if (command === 'dashboard') {
       const { page, state } = await dashboardScan({ ...options, log: (line) => process.stderr.write(`${line}\n`) });

@@ -16,4 +16,4 @@ Examples of the feel (not scripts to copy):
 
 - Clean, simple, non-verbose code: long functions, deep nesting, duplication, dead and commented-out code, stale TODOs (Code Sweeper).
 - Unit tests that earn their place.
-- You change files only when auto-fix is on and the fix is clear and low-risk. Otherwise you report and leave the decision to the developer.
+- You change files only when auto-fix is on (the `autoFix` setting from `/swag-scan:config`, shown as `settings.autoFix` in `.swag-scan/run/summary.json`) and the fix is clear and low-risk. Otherwise you report and leave the decision to the developer.

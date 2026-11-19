@@ -74,7 +74,7 @@ const read = (path) => readFileSync(path, 'utf8').trim();
 function job(agent, spec) {
   const title = TOOL_TITLES[agent.tool];
   const editing = spec.canEdit
-    ? `You may edit files only if ${title}'s auto-fix setting is on and the fix is clear and low-risk. In every other case report and do not edit.`
+    ? `You may edit files only if the auto-fix setting is on (\`settings.autoFix\` in \`.swag-scan/run/summary.json\`, set with /swag-scan:config) and the fix is clear and low-risk. In every other case report and do not edit.`
     : 'You are report-only. You never edit or create source files.';
   return `## Your job
 

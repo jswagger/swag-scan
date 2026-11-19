@@ -10,7 +10,7 @@ Swag Scan is meant to be read before it is trusted. This page lists every comman
 | Do the scripts use the network? | **No.** There is no `http`, `https`, `net` or `fetch` call and no URL in any script. The live view is a self-contained page that re-reads a local file. |
 | Is there telemetry? | **No.** There is no network code to send any. |
 | Does my code leave my machine? | **The scripts send nothing anywhere.** The three reviewers are Claude Code subagents, so the changed lines and nearby code they read are seen by the model your Claude Code session already uses, under your own Claude Code account and data settings. |
-| Does it change my repository? | The `/swag-scan` command writes only inside `.swag-scan/`. Only the **Inspector** can edit source files, and only when auto-fix is on. The first run changes no files. |
+| Does it change my repository? | The `/swag-scan:run` command writes only inside `.swag-scan/`. `/swag-scan:config` writes only `~/.swag-scan/settings.json`. Only the **Inspector** can edit source files, and only when auto-fix is on. The first run changes no files. |
 
 ## Commands the scripts run
 
@@ -29,20 +29,21 @@ The scripts call `git` with an argument list, not through a shell. Nothing here 
 | `git ls-files -z` | Match changed files against tracked ones |
 | `git grep -n -w -F --untracked -e <symbol> -- <paths>` | Find callers of a changed function |
 | `node <script>.mjs` | The plugin runs its own scripts, nothing else |
-| `open` / `xdg-open` / `cmd /c start` on `.swag-scan/dashboard.html` | Open the live view. In Claude Code this happens unless you pass `--no-live`; from the command line, only with `--open`. |
+| `open` / `xdg-open` / `cmd /c start` on `.swag-scan/dashboard.html` | Open the live view. In Claude Code this happens when `liveDashboard` is on in the config (the default); from the command line, only with `--open`. |
 
 ## What it reads
 
 - Your branch diff and the untracked, non-ignored text files in the repository. Binary and oversized files are skipped.
 - Code around the changes: callers of changed symbols, and files related to them (see `scope.maxRelatedFiles` in the [reference](REFERENCE.md#security-auditor)).
-- A ticket file (`.xml`, `.md` or `.txt`), only if you point to one with `--ticket` or the branch name names one. A Jira XML export is read by a small parser inside Swag Scan; Word and Excel files are not read. Reviewers see only its title, description and acceptance criteria.
-- `~/.swag-scan/settings.json` (or the file named by `SWAG_SCAN_SETTINGS`), for a ticket folder. The `SWAG_SCAN_TICKET_DIR` and `SWAG_SCAN_EVENTS` environment variables.
+- A ticket file (`.xml`, `.md` or `.txt`), only if you give a ticket ID (looked up in `ticketSourcePath`), point to one with `--ticket`, or the branch name names one. A Jira XML export is read by a small parser inside Swag Scan; Word and Excel files are not read. Reviewers see only its title, description and acceptance criteria.
+- `~/.swag-scan/settings.json` (or the file named by `SWAG_SCAN_SETTINGS`): your config (ticket folder, target branch, live view, auto-fix, file size limit). The `SWAG_SCAN_TICKET_DIR` and `SWAG_SCAN_EVENTS` environment variables.
 - The `config.json` next to each skill.
 
 ## What it writes
 
 | Where | What | Notes |
 | --- | --- | --- |
+| `~/.swag-scan/settings.json` | Your config: ticket folder, target branch, live view, auto-fix, file size limit | Only when you run `/swag-scan:config` (or `swag-scan config set`). Outside every repository. |
 | `.swag-scan/run/` | Scan results, `summary.json`, each agent's findings, `events.jsonl` | Replaced on every run. The event log holds counts, agent names, file names and finding ids, never code or finding text. |
 | `.swag-scan/reports/<commit>/` | `report.md`, `report.html`, `report.json` | The report you read |
 | `.swag-scan/cache/` | Stored reviews | At most 50 entries kept |

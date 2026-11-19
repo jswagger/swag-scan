@@ -11,7 +11,7 @@ Swag Scan has been trial-run on Windows 11 with Node 22. One catch: if you use C
 - **Find it:** `%USERPROFILE%\.vscode\extensions\anthropic.claude-code-<version>-win32-x64\resources\native-binary\claude.exe`. The version is part of the folder name, so the path changes when the extension updates.
 - **PowerShell** needs the call operator: `& "<path>\claude.exe" --plugin-dir <swag-scan folder>`
 - **Command Prompt** takes the quoted path alone: `"<path>\claude.exe" --plugin-dir <swag-scan folder>`
-- **Then type the command inside Claude**, not in the shell: start the session first, and only then enter `/swag-scan:swag-scan <base> --ticket <path>`. Pasting both lines into the terminal runs the second one as a shell command and fails.
+- **Then type the command inside Claude**, not in the shell: start the session first, and only then enter `/swag-scan:config` (once) and `/swag-scan:run <ticket-id>`. Pasting both lines into the terminal runs the second one as a shell command and fails.
 
 ## GitHub Copilot (experimental, not part of the plugin)
 
@@ -76,7 +76,7 @@ node skills/review-tools-common/swag-scan.mjs dashboard [--watch] [--open]
 
 - Writes `.swag-scan/dashboard.html` (self-contained: no network, no external fonts or scripts) and prints its path. With no scan yet it shows "Waiting for a scan".
 - `--watch` keeps the page's data fresh until the scan ends (start it before `run`, or while one is running). The page picks up changes without reloading, and says "Not updating" if the watcher stops.
-- `--open` opens the page in your browser. In Claude Code, `/swag-scan:swag-scan` starts the watcher and opens the page for you unless you pass `--no-live`.
+- `--open` opens the page in your browser. In Claude Code, `/swag-scan:run` starts the watcher and opens the page for you when `liveDashboard` is on in the config (the default).
 - The page shows only what events carry: agent, step counts, file names and finding ids. It never tracks whether you approved a prompt.
 
 ### Run everything at once
@@ -84,8 +84,24 @@ node skills/review-tools-common/swag-scan.mjs dashboard [--watch] [--open]
 One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, it uses no model tokens, and it changes no files:
 
 ```bash
-node skills/review-tools-common/swag-scan.mjs run [--base main] [--ticket PROJ-123] [--agents analyst,security-guard] [--fresh] [--json]
+node skills/review-tools-common/swag-scan.mjs run [PROJ-123] [--base main] [--ticket-dir <dir>] [--agents analyst,security-guard] [--fresh] [--json]
 ```
+
+`run` needs the config (below) and stops with "Please set up your config file first. Run /swag-scan:config to get started." without it. It compares against `targetBranch`, passes `maxFileLines` to the Code Sweeper and records `autoFix` for the Inspector in `summary.json` under `settings`. `--base` and `--ticket-dir` stay as one-off overrides for scripts and CI; `/swag-scan:run` never passes them.
+
+### Config
+
+`/swag-scan:config` asks the questions (multiple choice) and saves the answers with `swag-scan config set`. The file is `~/.swag-scan/settings.json`, or the file named by `SWAG_SCAN_SETTINGS`. Per-user, outside any repo, no network.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `ticketSourcePath` | none | Folder of Jira XML exports. `/swag-scan:run ID-123` reads `ID-123.xml` there. The older name `ticketFolder` is still read until `ticketSourcePath` is saved. |
+| `targetBranch` | `main` | The branch the change is compared against. |
+| `liveDashboard` | `true` | Whether `/swag-scan:run` opens the live view. |
+| `autoFix` | `false` | Whether the Inspector may fix clear, low-risk cleanup items. Replaces `autoFix.enabled` in the Code Sweeper's `config.json` for runs started by Swag Scan. |
+| `maxFileLines` | `1000` | The Code Sweeper flags a changed file longer than this (and only when it is new, just crossed the limit, or grew by `minFileGrowthLines`). Replaces `scan.thresholds.maxFileLines` for runs started by Swag Scan. |
+
+The same file can be read and changed from a shell: `swag-scan config` (show), `swag-scan config get <key>`, `swag-scan config set <key> <value> [<key> <value> ...]`, `swag-scan config path`. A value that cannot be used is refused with one sentence and nothing is saved. The config counts as set up only when all five keys are saved, so an old file with just `ticketFolder` is asked to run `/swag-scan:config` once.
 
 It prints one progress line per agent, then a short summary: leads per agent, the language coverage line, the ticket it found, and whether a stored review already covers this commit. Leads are script matches, not verified findings. Results are written to `.swag-scan/run/` (replaced every run, gitignored). Because the command is always the same shape, one permission rule covers it.
 
@@ -133,7 +149,7 @@ When nothing has changed since the last review (same commit, same base, same con
 Bug Hunter checks the change against a ticket's acceptance criteria. It needs no configuration if the branch name holds a ticket ID (such as `feature/PROJ-123`) and it can find the ticket folder.
 
 - **Which ticket:** `--ticket PROJ-123` (an ID) or `--ticket path/to/file.md` (a path, inside or outside the repo). With neither, the ID is taken from the branch name. A `--ticket` you typed that cannot be found (a wrong path or an unknown ID) stops the run before any model review, with the reason and, for a path, the closest real file it can find. A ticket guessed from the branch name that is missing only adds a one-line note.
-- **Where tickets live:** an ID is looked up as `PROJ-123.xml`, `.md` or `.txt` (or `PROJ-123-any-title.xml`; a browser's `PROJ-123 (1).xml` works too) in the first of: `--ticket-dir`, the `SWAG_SCAN_TICKET_DIR` environment variable, `ticketFolder` in `~/.swag-scan/settings.json` (a per-user file, outside any repo), or `ticketContext.path` in the repo's config. There is no built-in default folder.
+- **Where tickets live:** an ID is looked up as `PROJ-123.xml`, `.md` or `.txt` (or `PROJ-123-any-title.xml`; a browser's `PROJ-123 (1).xml` works too) in the first of: `--ticket-dir`, the `SWAG_SCAN_TICKET_DIR` environment variable, `ticketSourcePath` in `~/.swag-scan/settings.json` (a per-user file, outside any repo; older name `ticketFolder`), or `ticketContext.path` in the repo's config. There is no built-in default folder.
 - **Jira XML exports (the easy way):** open the ticket in Jira, choose Export, then **Export XML**. Jira shows the XML in a new browser tab instead of downloading it, so press Ctrl+S (Cmd+S on Mac) and save it as `PROJ-123.xml` in your ticket folder. If your browser offers a file type, choose "Webpage, HTML Only" and make sure the name ends in `.xml`. Copying the whole page into a new text file named `PROJ-123.xml` works too. Swag Scan reads it with no libraries and takes only the issue key, the summary, the description, and any custom field with "Acceptance" in its name (such as `Acceptance Criteria`). If the description has a line that says only "Acceptance Criteria" followed by a list, that list is used too. Comments, status, links and other fields are left out. Jira has written the description's HTML in three ways over the years (escaped, written straight into the XML, or in a CDATA block), and all three are read. A file from a search holds several issues; the one whose key matches is used. A custom field that Jira leaves empty in its XML cannot be recovered; if criteria go missing, check the field in the exported file.
 - **Word and Excel files** (`.doc`, `.docx`, `.xls`, `.xlsx`) are not read. Jira's own Word and Excel exports are HTML saved under those names, and real Office files need a library; use Export XML instead.
 - **What reviewers see:** only the title, the description and the acceptance criteria. Implementation or development logs, notes and any other section are removed, because they describe what was built and would bias the review. The report names the sections that were left out. A ticket with no headings is passed whole, with a note.

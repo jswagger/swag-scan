@@ -5,12 +5,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { AGENTS, PlainError, renderSummary, runScan } from '../swag-scan.mjs';
+import { AGENTS, PlainError, configCommand, prepareRun, renderSummary, runScan } from '../swag-scan.mjs';
 
 const script = fileURLToPath(new URL('../swag-scan.mjs', import.meta.url));
 
 function git(directory, args) {
   return execFileSync('git', args, { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
+/** An environment whose config file (SWAG_SCAN_SETTINGS) is fully set up, so a CLI `run` never reads the real ~/.swag-scan. */
+function configuredEnv(context, values = {}) {
+  const directory = mkdtempSync(join(tmpdir(), 'swag-config-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const file = join(directory, 'settings.json');
+  writeFileSync(file, JSON.stringify({ ticketSourcePath: '', targetBranch: 'main', liveDashboard: true, autoFix: false, maxFileLines: 1000, ...values }));
+  return { ...process.env, SWAG_SCAN_SETTINGS: file, SWAG_SCAN_TICKET_DIR: '' };
 }
 
 const BASE = `export async function getUser(db, id) {
@@ -131,7 +140,7 @@ test('plain errors, never a stack trace', (context) => {
   assert.throws(() => runScan({ repo: notRepo }), (error) => error instanceof PlainError && /is not a git repository/.test(error.message));
   assert.throws(() => runScan({ repo: fixture(context), agents: ['wizard'] }), /Unknown agent "wizard"/);
 
-  const cli = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+  const cli = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: configuredEnv(context) });
   const bad = cli('run', '--repo', notRepo);
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /^.+ is not a git repository, so there is nothing to scan\.\n$/);
@@ -141,13 +150,15 @@ test('plain errors, never a stack trace', (context) => {
 
 test('the CLI prints progress on stderr and the summary on stdout, or JSON with --json', (context) => {
   const repo = fixture(context);
-  const text = spawnSync(process.execPath, [script, 'run', '--repo', repo], { encoding: 'utf8' });
+  const env = configuredEnv(context);
+  const text = spawnSync(process.execPath, [script, 'run', '--repo', repo], { encoding: 'utf8', env });
   assert.equal(text.status, 0, text.stderr);
   assert.match(text.stderr, /\[3\/3\] Security Guard/);
-  assert.match(text.stdout, /^Swag Scan: feature\/PROJ-123 vs main \(auto-detected\)/);
+  assert.match(text.stdout, /^Swag Scan: feature\/PROJ-123 vs main · /);
 
-  const json = JSON.parse(spawnSync(process.execPath, [script, 'run', '--repo', repo, '--json'], { encoding: 'utf8' }).stdout);
+  const json = JSON.parse(spawnSync(process.execPath, [script, 'run', '--repo', repo, '--json'], { encoding: 'utf8', env }).stdout);
   assert.equal(json.schemaVersion, 1);
+  assert.deepEqual(json.settings, { targetBranch: 'main', liveDashboard: true, autoFix: false, maxFileLines: 1000 });
   assert.equal(json.agents.length, 3);
 });
 
@@ -204,4 +215,69 @@ test('an explicit --ticket ID that cannot be found also stops the run, but a bra
   const repo = fixture(context);
   assert.throws(() => runScan({ repo, ticket: 'PROJ-999', ticketDir: join(repo, 'nowhere') }), PlainError);
   assert.doesNotThrow(() => runScan({ repo, ticketDir: join(repo, 'nowhere') }));
+});
+
+test('run asks for the config first, and starts nothing', (context) => {
+  const repo = fixture(context);
+  const empty = join(mkdtempSync(join(tmpdir(), 'swag-noconfig-')), 'settings.json');
+  context.after(() => rmSync(join(empty, '..'), { recursive: true, force: true }));
+  const env = { ...process.env, SWAG_SCAN_SETTINGS: empty };
+  const result = spawnSync(process.execPath, [script, 'run', 'PROJ-123', '--repo', repo], { encoding: 'utf8', env });
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr, 'Please set up your config file first. Run /swag-scan:config to get started.\n');
+  assert.equal(existsSync(join(repo, '.swag-scan')), false, 'no scan folder is created');
+
+  // A file with only the older ticketFolder key is not a finished setup either.
+  writeFileSync(empty, JSON.stringify({ ticketFolder: '/tickets' }));
+  assert.throws(() => prepareRun({}, { env }), /Please set up your config file first/);
+});
+
+test('prepareRun takes the base branch from the config, and --base still overrides it', (context) => {
+  const env = configuredEnv(context, { targetBranch: 'develop', maxFileLines: 800, autoFix: true });
+  const prepared = prepareRun({ ticket: 'PROJ-1' }, { env });
+  assert.equal(prepared.base, 'develop');
+  assert.equal(prepared.ticket, 'PROJ-1');
+  assert.deepEqual(prepared.settings, { targetBranch: 'develop', liveDashboard: true, autoFix: true, maxFileLines: 800 });
+  assert.equal(prepareRun({ base: 'origin/main' }, { env }).base, 'origin/main');
+});
+
+test('a ticket ID typed after run is the ticket, and the config base is used', (context) => {
+  const repo = fixture(context);
+  const tickets = mkdtempSync(join(tmpdir(), 'swag-tickets-'));
+  context.after(() => rmSync(tickets, { recursive: true, force: true }));
+  writeFileSync(join(tickets, 'PROJ-123.md'), '# PROJ-123: Fix lookup\n\n## Acceptance Criteria\n\n1. Lookups are parameterized\n');
+  const env = configuredEnv(context, { ticketSourcePath: tickets });
+  const result = spawnSync(process.execPath, [script, 'run', 'PROJ-123', '--repo', repo, '--json'], { encoding: 'utf8', env });
+  assert.equal(result.status, 0, result.stderr);
+  const summary = JSON.parse(result.stdout);
+  assert.equal(summary.base.ref, 'main');
+  assert.equal(summary.base.autoDetected, false);
+  assert.equal(summary.ticket.id, 'PROJ-123');
+});
+
+test('maxFileLines from the config reaches the Code Sweeper', (context) => {
+  const lines = (count) => Array.from({ length: count }, (_, index) => `export const value${index} = ${index};`).join('\n');
+  const repo = fixture(context, { extra: { 'big.js': lines(700) } });
+  const sweeper = (limit) => runScan({ repo, base: 'main', fresh: true, settings: { maxFileLines: limit, autoFix: false } }).agents.find((agent) => agent.id === 'inspector');
+  const rules = (agent) => JSON.parse(readFileSync(agent.files.scan, 'utf8')).candidates.map((candidate) => candidate.ruleId);
+  assert.ok(rules(sweeper(500)).includes('SWEEP-111'), 'a 700-line file is over a 500-line limit');
+  assert.ok(!rules(sweeper(1000)).includes('SWEEP-111'), 'and under a 1000-line limit');
+});
+
+test('config show, get and set work through the CLI and keep other keys', (context) => {
+  const env = configuredEnv(context, { somethingElse: 'kept' });
+  const cli = (...args) => spawnSync(process.execPath, [script, 'config', ...args], { encoding: 'utf8', env });
+  assert.match(cli().stdout, /targetBranch: main[\s\S]*maxFileLines: 1000/);
+  assert.equal(cli('get', 'liveDashboard').stdout, 'true\n');
+  const saved = cli('set', 'targetBranch', 'develop', 'autoFix', 'true', 'maxFileLines', '1200');
+  assert.equal(saved.status, 0, saved.stderr);
+  assert.equal(cli('get', 'targetBranch').stdout, 'develop\n');
+  const file = JSON.parse(readFileSync(env.SWAG_SCAN_SETTINGS, 'utf8'));
+  assert.deepEqual([file.autoFix, file.maxFileLines, file.somethingElse], [true, 1200, 'kept']);
+  const bad = cli('set', 'maxFileLines', 'lots');
+  assert.equal(bad.status, 1);
+  assert.equal(bad.stderr, 'maxFileLines must be a whole number of lines, such as 1000.\n');
+  assert.equal(cli('nope').status, 1);
+  assert.equal(JSON.parse(readFileSync(env.SWAG_SCAN_SETTINGS, 'utf8')).maxFileLines, 1200, 'a bad value changes nothing');
+  assert.match(configCommand({ action: 'path', args: [] }, { env }), /settings\.json$/);
 });

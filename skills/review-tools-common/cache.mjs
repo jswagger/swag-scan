@@ -49,8 +49,8 @@ export function toolFingerprint(skillDir) {
   return sha(...files.flatMap((path) => [relative(COMMON_DIR, path), readFileSync(path)]));
 }
 
-export function cacheKey({ tool, head, baseCommit, configText, ticketText = '', fingerprint }) {
-  return sha(CACHE_SCHEMA, tool, head, baseCommit, configText, ticketText, fingerprint).slice(0, 24);
+export function cacheKey({ tool, head, baseCommit, configText, ticketText = '', fingerprint, extraKey = '' }) {
+  return sha(CACHE_SCHEMA, tool, head, baseCommit, configText, ticketText, fingerprint, ...(extraKey ? [extraKey] : [])).slice(0, 24);
 }
 
 function cacheDir(repo) {
@@ -71,7 +71,8 @@ function hasUncommittedChanges(repo, collected) {
   return (collected.files ?? []).some((file) => file.status === 'untracked');
 }
 
-export function checkCache({ tool, configPath, diffPath, contextPath, repo = process.cwd(), fresh = false }) {
+/** `extraKey` is anything outside the tool's own config that changes its answer, such as the user's maxFileLines. */
+export function checkCache({ tool, configPath, diffPath, contextPath, repo = process.cwd(), fresh = false, extraKey = '' }) {
   const collected = JSON.parse(readFileSync(resolve(diffPath), 'utf8'));
   const none = (reason, extra = {}) => ({ hit: false, cacheable: false, key: null, reason, ...extra });
   if (hasUncommittedChanges(repo, collected)) return none('The working tree has uncommitted changes, so results are not cached.');
@@ -86,6 +87,7 @@ export function checkCache({ tool, configPath, diffPath, contextPath, repo = pro
     configText: readFileSync(resolve(configPath), 'utf8'),
     ticketText: context.ticket?.found ? context.ticket.content : '',
     fingerprint: toolFingerprint(dirname(resolve(configPath))),
+    extraKey,
   });
   if (fresh) return { hit: false, cacheable: true, key, reason: 'Fresh run requested.' };
 
