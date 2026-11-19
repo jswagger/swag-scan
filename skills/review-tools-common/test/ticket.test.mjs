@@ -172,7 +172,7 @@ test('missing pieces give a helpful note, and an unset feature stays quiet', (co
   const directory = folder(context);
   assert.deepEqual(gatherTicketContext(null, undefined, { branch: 'main', ...none }), { enabled: false, found: false, notes: [] });
   assert.match(gatherTicketContext(null, 'PROJ-1', none).notes[0], /no ticket folder is set/);
-  assert.match(gatherTicketContext(null, 'PROJ-1', { env: {}, userSettings: { ticketFolder: directory } }).notes[0], /No PROJ-1\.md or PROJ-1\.txt found/);
+  assert.match(gatherTicketContext(null, 'PROJ-1', { env: {}, userSettings: { ticketFolder: directory } }).notes[0], /No PROJ-1\.xml, PROJ-1\.md or PROJ-1\.txt found/);
   assert.match(gatherTicketContext(null, undefined, { branch: 'main', env: {}, userSettings: { ticketFolder: directory } }).notes[0], /no ticket ID/);
 });
 

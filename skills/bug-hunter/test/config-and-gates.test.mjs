@@ -164,7 +164,7 @@ test('ticket context truncates, supports a CLI override, and reports a missing t
 
   const missing = gatherTicketContext(settings);
   assert.equal(missing.found, false);
-  assert.match(missing.notes[0], /No OLD-1\.md or OLD-1\.txt/);
+  assert.match(missing.notes[0], /No OLD-1\.xml, OLD-1\.md or OLD-1\.txt/);
 });
 
 test('ticket context rejects names that try to escape the ticket folder', (context) => {

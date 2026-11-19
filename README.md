@@ -87,7 +87,7 @@ To cut permission prompts, add `Bash(swag-scan *)` to your allowed commands. Eve
 2. **Check the base.** It should be the branch this one will merge into, which is not always the default branch. Compare `git diff --stat <base>...HEAD` with what you expect. Swag Scan warns when another base makes the change much smaller, but only you know the real target.
 3. **Keep the tool's folder out of `git status`** by adding `.swag-scan/` to `.git/info/exclude` (local only, nothing to commit).
 4. **Look at the scan summary before the reviewers run.** It shows how many files came from the branch diff and how many are untracked. Untracked, non-ignored text files are scanned, so a local folder of data files can swamp the real change. If you see a warning, add that folder to `.git/info/exclude` and run again.
-5. **Point to the ticket** with `--ticket <path>` or a `ticketFolder` in `~/.swag-scan/settings.json`, if the work has one. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
+5. **Point to the ticket** with `--ticket <path>` or a `ticketFolder` in `~/.swag-scan/settings.json`, if the work has one. To get a ticket from Jira, open it, choose **Export**, then **Export XML**, and save the page with Ctrl+S (Cmd+S on Mac) as `ID-123.xml` in your ticket folder. For a ticket that spans several repositories, criteria that name another repository are listed as "Other repo, not scanned" and no finding is linked to them.
 
 ## More
 

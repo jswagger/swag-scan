@@ -96,7 +96,7 @@ test('the ticket is found from the branch name and reported', (context) => {
 test('a missing ticket folder is one short line, not a failure', (context) => {
   const repo = fixture(context);
   const summary = runScan({ repo, ticketDir: join(repo, 'nowhere') });
-  assert.match(summary.text, /Ticket PROJ-123: No PROJ-123\.md or PROJ-123\.txt found/);
+  assert.match(summary.text, /Ticket PROJ-123: No PROJ-123\.xml, PROJ-123\.md or PROJ-123\.txt found/);
 });
 
 test('unsupported languages show as unchecked in the summary', (context) => {
