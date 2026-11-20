@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { gatherTicketContext } from '../../bug-hunter/scripts/gather-context.mjs';
 import {
-  findTicketFile, parseCriteria, parseRepositories, parseTicket, resolveTicketFolder, scopeCriteria, ticketIdFromBranch,
+  findTicketFile, parseCriteria, parseRepositories, parseTicket, resolveTicketFolder, ticketIdFromBranch,
 } from '../ticket.mjs';
 
 const TICKET = `# PROJ-123: Add login
@@ -70,13 +70,14 @@ test('ticket files are found by ID in any letter case, with or without a title s
   assert.equal(findTicketFile(join(directory, 'missing'), 'PROJ-1'), undefined);
 });
 
-test('reviewers get the description and acceptance criteria and never the implementation log or statuses', () => {
+test('reviewers get the description and acceptance criteria as context, and never the implementation log or any status', () => {
   const parsed = parseTicket(TICKET);
   assert.match(parsed.review, /Users need to sign in\./);
   assert.match(parsed.review, /AC 1 Login form: Shows email and password \(repository: web-app\)/);
   assert.doesNotMatch(parsed.review, /hack|Implementation|Done|Todo|Future/);
   assert.deepEqual(parsed.omittedSections, ['Implementation Notes']);
-  assert.deepEqual(parsed.acceptanceCriteria.map((row) => row.status), ['Done', 'Todo', 'Future']);
+  assert.equal(parsed.acceptanceCriteria.length, 3);
+  assert.equal(parsed.acceptanceCriteria.some((row) => 'status' in row), false, 'a Status column is ignored: criteria are context, not a checklist');
 });
 
 test('a log nested under the description is dropped, but other subsections stay', () => {
@@ -93,18 +94,18 @@ test('the acceptance table tolerates reordered, missing and differently named co
     '| ✅ | Handles empty input | AC-1 |',
     '| | Rejects bad token | AC-2 |',
   ]);
-  assert.deepEqual(rows.map((row) => [row.id, row.description, row.status]), [
-    ['AC-1', 'Handles empty input', 'Done'],
-    ['AC-2', 'Rejects bad token', 'Todo'],
+  assert.deepEqual(rows.map((row) => [row.id, row.description]), [
+    ['AC-1', 'Handles empty input'],
+    ['AC-2', 'Rejects bad token'],
   ]);
 });
 
 test('acceptance criteria also parse from bullets, numbered items and checkboxes', () => {
   const rows = parseCriteria(['- [ ] User can log in', '- [x] Logout clears the session', '3. AC3: Token expires']);
-  assert.deepEqual(rows.map((row) => [row.id, row.description, row.status]), [
-    ['1', 'User can log in', 'Todo'],
-    ['2', 'Logout clears the session', 'Done'],
-    ['AC3', 'Token expires', 'Todo'],
+  assert.deepEqual(rows.map((row) => [row.id, row.description]), [
+    ['1', 'User can log in'],
+    ['2', 'Logout clears the session'],
+    ['AC3', 'Token expires'],
   ]);
 });
 
@@ -193,7 +194,7 @@ test('the CLI reads the ticket folder from the environment and the ID from the b
   assert.match(ticket.content, /AC 2 Token/);
 });
 
-test('two criteria tables are parsed separately, and criteria for other repositories are scoped out', () => {
+test('two criteria tables are parsed separately, and a repository column is kept as a label', () => {
   const lines = [
     '| # | Title |', '| --- | --- |', '| 1 | First requirement |', '| 2 | Second requirement |',
     '', 'Tracking per repository:', '',
@@ -204,8 +205,4 @@ test('two criteria tables are parsed separately, and criteria for other reposito
   assert.deepEqual(criteria.map((row) => row.id), ['1', '2', '1a', '1b'], 'the second table header is not read as a row');
   assert.equal(criteria.find((row) => row.id === '1a').repository, 'ui-app');
 
-  const scoped = scopeCriteria(criteria, 'ui-app');
-  assert.deepEqual(scoped.filter((row) => row.otherRepo).map((row) => row.id), ['1b']);
-  assert.equal(scoped.find((row) => row.id === '1').otherRepo, false, 'a criterion with no repository applies everywhere');
-  assert.equal(scopeCriteria(criteria, 'something-else').some((row) => row.otherRepo), false, 'nothing is filtered when no criterion names this repository');
 });

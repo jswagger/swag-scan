@@ -278,15 +278,16 @@ try {
   const gateBytes = config.diff.maxDiffBytes;
   const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 
-  // Empty diff: say so in one sentence and suggest a ref that does have changes, never a silent empty result.
+  // Empty diff: tell the user plainly, and point at the two things they control: the branch that is checked out and the
+  // target branch in their config. This is also what a branch with the same name as the target branch produces.
+  // A closer base that does have changes is added as a hint, never silently used.
   const emptyDiff = scannedFiles.length === 0;
   let suggestion = null;
   if (emptyDiff) {
     const better = (autoBase ? otherBaseCandidates : baseCandidates().filter((candidate) => candidate.ref !== baseRef))
       .find((candidate) => candidate.ahead > 0);
-    suggestion = better
-      ? `Try a different base, for example \`${better.ref}\` (HEAD is ${better.ahead} ${better.ahead === 1 ? 'commit' : 'commits'} ahead of it).`
-      : 'Commit or stage your changes, or pass a base branch to compare against (for example `main`).';
+    suggestion = "I'm sorry, no changes against the target branch were found. Please check your current branch that is checked out, and confirm your target branch is correct in your config."
+      + (better ? ` (HEAD is ${better.ahead} ${better.ahead === 1 ? 'commit' : 'commits'} ahead of \`${better.ref}\`, if that is the branch you meant.)` : '');
   }
 
   process.stderr.write(

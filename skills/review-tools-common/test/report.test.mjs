@@ -26,7 +26,7 @@ const finding = (extra = {}) => ({
   severity: 'critical', title: 'SQL built by concatenation', file: 'app.js', line: 4, flaggedText: 'db.query("..." + id)',
   rule: 'CRIT-101', evidence: 'id "1 OR 1=1" returns every row.', recommendation: 'Parameterize it.', ...extra,
 });
-const saved = (agentId, input, criteriaIds) => buildFindingsReport({ findings: [], ...input }, { agent: agentId, tool: crew.find((c) => c.id === agentId).tool, criteriaIds, now: NOW });
+const saved = (agentId, input) => buildFindingsReport({ findings: [], ...input }, { agent: agentId, tool: crew.find((c) => c.id === agentId).tool, now: NOW });
 
 test('decisions are sorted critical first across agents, with ids, severity words and locations', () => {
   const report = buildReport({
@@ -49,37 +49,24 @@ test('decisions are sorted critical first across agents, with ids, severity word
   assert.match(markdown, /commit `abcdef1`/);
 });
 
-test('acceptance criteria rows show the ticket status and link the findings that relate to them', () => {
-  const ticket = { id: 'PROJ-1', title: 'PROJ-1: Fix lookup', criteria: [
-    { id: '1', title: 'Parameterized', repository: 'api', status: 'Done' },
-    { id: '2', title: '', description: 'Keep the id guard', repository: 'api', status: 'Todo' },
-    { id: '3', title: 'Audit log', repository: 'web', status: 'Future' },
-  ] };
+test('the report names the ticket but has no acceptance-criteria section, status or criteria links', () => {
+  const ticket = { id: 'PROJ-1', title: 'PROJ-1: Fix lookup', criteria: [{ id: '1', title: 'Parameterized', status: 'Done' }] };
   const report = buildReport({
     summary: summary([agent(0), agent(1, { leads: 0 }), agent(2)]),
     findings: {
-      analyst: saved('analyst', { findings: [finding({ severity: 'critical', title: 'Guard removed', criteria: ['2'] })] }, ['1', '2', '3']),
-      'security-guard': saved('security-guard', { findings: [finding({ criteria: ['1', '2'] })] }, ['1', '2', '3']),
+      analyst: saved('analyst', { findings: [finding({ severity: 'critical', title: 'Guard removed', criteria: ['2'] })] }),
+      'security-guard': saved('security-guard', { findings: [finding({ criteria: ['1', '2'] })] }),
     },
     ticket,
   }, { now: NOW });
   const markdown = renderMarkdown(report);
-  assert.match(markdown, /\| # \| Title \| Repository \| Status \| Findings \|/);
-  assert.match(markdown, /\| 1 \| Parameterized \| api \| ✅ Done \| SG-1 🔴 \|/);
-  assert.match(markdown, /\| 2 \| Keep the id guard \| api \| 🔲 Todo \| AN-1 🔴, SG-1 🔴 \|/);
-  assert.match(markdown, /\| 3 \| Audit log \| web \| 🔮 Future \| None linked \|/);
-  assert.match(markdown, /"None linked" means no agent tied a finding to that row, not that the row is verified/);
   assert.match(markdown, /ticket PROJ-1 \(Fix lookup\)/);
-  assert.deepEqual(report.criteria.map((row) => row.findingIds), [['SG-1'], ['AN-1', 'SG-1'], []]);
+  assert.doesNotMatch(markdown, /Acceptance criteria|None linked|🔲 Todo|🔮 Future|\| Status \|/);
+  assert.equal('criteria' in report, false);
 });
 
-test('without a ticket there is no criteria section; without repositories no Repository column', () => {
-  assert.doesNotMatch(renderMarkdown(buildReport({ summary: summary([agent(0)]), findings: {} }, { now: NOW })), /Acceptance criteria/);
-  const markdown = renderMarkdown(buildReport({
-    summary: summary([agent(0)]), findings: {}, ticket: { id: 'PROJ-1', criteria: [{ id: '1', title: 'T', status: 'Todo' }] },
-  }, { now: NOW }));
-  assert.match(markdown, /\| # \| Title \| Status \| Findings \|/);
-  assert.doesNotMatch(markdown, /Repository/);
+test('without a ticket the header says so', () => {
+  assert.match(renderMarkdown(buildReport({ summary: summary([agent(0)]), findings: {} }, { now: NOW })), /no ticket/);
 });
 
 test('fixed items go under Done for you, and report-only runs list would-have-fixed items with a safe-fix note', () => {
@@ -216,15 +203,4 @@ test('the report command: markdown on stdout, a plain error without a scan, JSON
   const json = JSON.parse(spawnSync(process.execPath, [cli, 'report', '--repo', repo, '--json'], { encoding: 'utf8' }).stdout);
   assert.equal(json.schemaVersion, 1);
   assert.equal(spawnSync(process.execPath, [cli, 'report', '--fresh'], { encoding: 'utf8' }).status, 1);
-});
-
-test('criteria for other repositories read "Other repo", not "None linked", and blank repositories read "(all)"', () => {
-  const ticket = { id: 'PROJ-1', criteria: [
-    { id: '1', title: 'Everywhere', status: 'Todo' },
-    { id: '2', title: 'Mine', repository: 'web', status: 'Todo' },
-    { id: '3', title: 'Not mine', repository: 'api', status: 'Todo', otherRepo: true },
-  ] };
-  const markdown = renderMarkdown(buildReport({ summary: summary([agent(0)]), findings: {}, ticket }, { now: NOW }));
-  assert.match(markdown, /\| 1 \| Everywhere \| \(all\) \| 🔲 Todo \| None linked \|/);
-  assert.match(markdown, /\| 3 \| Not mine \| api \| 🔲 Todo \| Other repo, not scanned \|/);
 });

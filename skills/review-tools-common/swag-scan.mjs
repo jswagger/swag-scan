@@ -22,7 +22,7 @@ import { emit } from './events.mjs';
 import { DASHBOARD_FILE, watchDashboard, writeDashboard } from './dashboard.mjs';
 import { writeReport } from './report.mjs';
 import { loadSettings, parseSetting, renderSettings, saveSettings, SETTING_KEYS, SETUP_MESSAGE, SettingsError } from './settings.mjs';
-import { looksLikePath, scopeCriteria } from './ticket.mjs';
+import { looksLikePath } from './ticket.mjs';
 
 const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = dirname(COMMON_DIR);
@@ -157,26 +157,18 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
     // A ticket the user named on purpose that cannot be read stops the run here, before the crew spends a model review
     // on 0 criteria. A ticket guessed from the branch name, or none at all, stays a one-line note.
     if (ticket && !found.found) throw new PlainError(missingTicketMessage(ticket, found.notes?.[0], repo));
-    // Reviewers must not see what is already built, so criterion status is kept out of the files the agents read
-    // and saved separately for the report: ticket-report.json.
-    // Criteria for other repositories stay in the report, marked as such, but findings are never linked to them.
-    const statuses = scopeCriteria(found.acceptanceCriteria ?? [], basename(repo)).map(({ id, title, description, repository, status, otherRepo }) => ({ id, title, description, repository, status, otherRepo }));
-    if (found.acceptanceCriteria) {
-      for (const row of found.acceptanceCriteria) delete row.status;
-      writeFileSync(file('context'), JSON.stringify(context, null, 2));
-    }
+    // The ticket's criteria reach the reviewers as context only (see ticket.mjs). Only the ticket's identity is kept
+    // for the report header; no criterion or status is saved or reported.
     if (found.found) {
       result.files.ticketReport = join(runDir, 'ticket-report.json');
-      writeFileSync(result.files.ticketReport, `${JSON.stringify({ id: found.ticketName, source: found.source, title: found.title, criteria: statuses, repositories: found.repositories ?? [] }, null, 2)}\n`);
+      writeFileSync(result.files.ticketReport, `${JSON.stringify({ id: found.ticketName, source: found.source, title: found.title, repositories: found.repositories ?? [] }, null, 2)}\n`);
     }
     progress('ticket');
     result.ticket = {
       found: found.found,
       ...(found.ticketName ? { id: found.ticketName } : {}),
       ...(found.source ? { source: found.source } : {}),
-      criteria: statuses.length,
-      criteriaIds: statuses.filter((row) => !row.otherRepo).map((row) => String(row.id)),
-      otherRepoCriteria: statuses.filter((row) => row.otherRepo).length,
+      criteria: (found.acceptanceCriteria ?? []).length,
       repositories: found.repositories ?? [],
       notes: found.notes ?? [],
     };

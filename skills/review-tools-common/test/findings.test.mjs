@@ -30,7 +30,7 @@ test('a valid finding set is numbered per agent, sorted critical first, and coun
   assert.equal(report.generatedAt, '2026-11-02T12:00:00.000Z');
   assert.deepEqual(report.findings[0].locations, [{ file: 'app.js', line: 4 }]);
   assert.equal(report.findings[0].flaggedText, 'return db.query("SELECT ...")');
-  assert.deepEqual(report.findings[0].criteria, []);
+  assert.equal('criteria' in report.findings[0], false);
   assert.deepEqual(report.clean, [{ area: 'src/pay.js totals', note: '' }, { area: 'src/auth.js', note: '' }]);
   assert.equal(report.coverage.line, 'Coverage: x.');
 });
@@ -82,12 +82,10 @@ test('only the Inspector can have fixed (or be able to fix) anything; the others
   assert.deepEqual([report.counts.autoFixed, report.counts.wouldAutoFix, report.counts.needsDecision], [1, 1, 1]);
 });
 
-test('acceptance-criteria links must exist in the ticket', () => {
-  const finding = critical({ criteria: ['1', 2] });
-  assert.deepEqual(validateAgentFindings({ findings: [finding] }, { agent: 'analyst', criteriaIds: ['1', '2', '3'] }), []);
-  assert.match(validateAgentFindings({ findings: [critical({ criteria: ['9'] })] }, { agent: 'analyst', criteriaIds: ['1'] }).join(), /criterion "9" is not in the ticket \(known: 1\)/);
-  assert.match(validateAgentFindings({ findings: [critical({ criteria: 'AC1' })] }, { agent: 'analyst' }).join(), /list of acceptance-criterion ids/);
-  assert.deepEqual(buildFindingsReport({ findings: [finding] }, { agent: 'analyst', tool: 'bug-hunter', criteriaIds: ['1', '2'] }).findings[0].criteria, ['1', '2']);
+test('criteria links are gone: an old agent that still sends them is not rejected, and the field is dropped', () => {
+  const finding = critical({ criteria: ['9'] });
+  assert.deepEqual(validateAgentFindings({ findings: [finding] }, { agent: 'analyst' }), []);
+  assert.equal('criteria' in buildFindingsReport({ findings: [finding] }, { agent: 'analyst', tool: 'bug-hunter' }).findings[0], false);
 });
 
 test('locations: several places for one finding, and voice stays in its own field', () => {
@@ -104,11 +102,11 @@ test('Bug Hunter\'s own findings file converts: probable becomes critical, suspi
     clean: [{ area: 'src/pay.js', note: 'unchanged' }],
     dismissed_script_findings: [{ rule: 'R', file: 'a.js', line: 3, reason: 'moved' }],
   });
-  const report = buildFindingsReport(converted, { agent: 'analyst', tool: 'bug-hunter', criteriaIds: ['2'] });
+  const report = buildFindingsReport(converted, { agent: 'analyst', tool: 'bug-hunter' });
   assert.deepEqual(report.findings.map((f) => [f.severity, f.disposition]), [['critical', 'needs-decision'], ['design', 'needs-decision']]);
   assert.equal(report.findings[0].evidence, 'The guard was removed. render(null) throws.');
   assert.equal(report.findings[0].flaggedText, '- if (user === null) return;');
-  assert.deepEqual(report.findings[0].criteria, ['2']);
+  assert.equal('criteria' in report.findings[0], false);
   assert.equal(report.findings[1].verify, 'Is disabling retries intended?');
   assert.equal(report.dismissed[0].reason, 'moved');
   // a Bug Hunter finding that was fixed by an earlier agent step keeps its fix note
@@ -140,21 +138,24 @@ function scannedRepo(context) {
   return { repo, summary, runDir: join(repo, '.swag-scan', 'run') };
 }
 
-test('the orchestrator keeps criterion status out of the files the agents read', (context) => {
+test('the orchestrator saves no criterion or status anywhere, and reviewers still get the criteria text as context', (context) => {
   const { summary, runDir } = scannedRepo(context);
-  assert.deepEqual(summary.ticket.criteriaIds, ['1', '2']);
-  const agentVisible = readFileSync(join(runDir, 'bug-hunter-context.json'), 'utf8') + readFileSync(join(runDir, 'summary.json'), 'utf8');
-  assert.doesNotMatch(agentVisible, /"status": "(Done|Todo|Future)"/);
-  assert.doesNotMatch(agentVisible, /Done|Todo/);
+  assert.equal(summary.ticket.criteria, 2);
+  assert.equal('criteriaIds' in summary.ticket, false);
+  const context_ = readFileSync(join(runDir, 'bug-hunter-context.json'), 'utf8');
+  assert.match(context_, /Use bound parameters/);
+  assert.match(context_, /Keep the id guard/);
+  const everything = context_ + readFileSync(join(runDir, 'summary.json'), 'utf8') + readFileSync(join(runDir, 'ticket-report.json'), 'utf8');
+  assert.doesNotMatch(everything, /"status": "(Done|Todo|Future)"|✅ Done|🔲 Todo/);
   const forReport = JSON.parse(readFileSync(join(runDir, 'ticket-report.json'), 'utf8'));
-  assert.deepEqual(forReport.criteria.map((row) => [row.id, row.status]), [['1', 'Done'], ['2', 'Todo']]);
+  assert.deepEqual([forReport.id, 'criteria' in forReport], ['PROJ-7', false]);
 });
 
 test('save-findings fills in tool, coverage, base and ids from the scan summary', (context) => {
   const { runDir } = scannedRepo(context);
   const result = saveFindings({
     agent: 'security-guard', runDir, now: NOW,
-    text: JSON.stringify({ findings: [critical({ criteria: ['1'] })], clean: [] }),
+    text: JSON.stringify({ findings: [critical()], clean: [] }),
   });
   assert.equal(result.path, join(runDir, 'findings-security-guard.json'));
   const saved = JSON.parse(readFileSync(result.path, 'utf8'));
@@ -162,7 +163,6 @@ test('save-findings fills in tool, coverage, base and ids from the scan summary'
   assert.equal(saved.base, 'main');
   assert.match(saved.coverage.line, /^Coverage: Checked: JavaScript/);
   assert.equal(saved.findings[0].id, 'SG-1');
-  assert.deepEqual(saved.findings[0].criteria, ['1']);
   assert.equal(result.counts.critical, 1);
 });
 
@@ -176,7 +176,7 @@ test('save-findings accepts Bug Hunter\'s format for the Analyst', (context) => 
 test('save-findings gives plain errors, and writes nothing when the findings are invalid', (context) => {
   const { runDir, repo } = scannedRepo(context);
   assert.throws(() => saveFindings({ agent: 'analyst', runDir, text: 'not json' }), /not valid JSON/);
-  assert.throws(() => saveFindings({ agent: 'analyst', runDir, text: JSON.stringify({ findings: [critical({ criteria: ['9'] })] }) }), /criterion "9" is not in the ticket \(known: 1, 2\)/);
+  assert.throws(() => saveFindings({ agent: 'analyst', runDir, text: JSON.stringify({ findings: [critical({ line: -1 })] }) }), /"line" must be a positive whole number/);
   assert.throws(() => saveFindings({ agent: 'wizard', runDir, text: '{"findings":[]}' }), /Agent "wizard" was not part of this scan/);
   assert.throws(() => saveFindings({ agent: 'analyst', runDir: join(repo, 'nowhere'), text: '{}' }), /Run "swag-scan run" first/);
   assert.equal(existsSync(join(runDir, 'findings-analyst.json')), false);

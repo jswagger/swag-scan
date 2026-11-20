@@ -43,7 +43,7 @@ It prints one progress line per agent, then a short summary, and saves the resul
 
 Read `.swag-scan/run/summary.json`. For each agent in `agents`:
 
-- `status: "empty"`: nothing to check. Say so. Do not start the agent.
+- `status: "empty"`: nothing to check. Say so, and show the user the agent's `suggestion` text as written (it asks them to check the checked-out branch and the target branch in their config). Do not start the agent.
 - `cache.hit: true`: this commit was already reviewed. Point to `cache.reports` and `cache.summary`. Do not start the agent.
 - `leads: 0`: the scripts found nothing for this agent, so it does no model review (scripts first, models only where something is flagged). Say so, and still show its coverage line. Say "no leads", never "clean".
 - otherwise: start the agent.
@@ -62,7 +62,7 @@ When every agent that was started has replied, build the combined report:
 swag-scan report
 ```
 
-It reads what the agents saved and prints one decisions-first report: what needs the developer's decision (a table with 🔴 Critical, 🟡 Feature gap / design issue and ✅ Cleanup / minor), what was fixed, the ticket's acceptance criteria with their status and linked findings, who looked at what, and coverage. Show it to the user as is. Add nothing to the findings and do not merge, re-rank or soften them.
+It reads what the agents saved and prints one decisions-first report: what needs the developer's decision (a table with 🔴 Critical, 🟡 Feature gap / design issue and ✅ Cleanup / minor), what was fixed, who looked at what, and coverage. Show it to the user as is. Add nothing to the findings and do not merge, re-rank or soften them.
 
 - If it says an agent did not report, tell the user plainly that the area was not reviewed. Do not start that agent again unless the user asks.
 - The report ends its summary with a next step. Do not add a list of flags.

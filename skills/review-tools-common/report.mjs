@@ -2,7 +2,7 @@
 // model tokens and gives the same answer every time:
 //   .swag-scan/run/summary.json            what the scan found (leads, coverage, cache) and which agents ran
 //   .swag-scan/run/findings-<agent>.json   each agent's judged findings (see findings.mjs)
-//   .swag-scan/run/ticket-report.json      the ticket's acceptance criteria with their status
+//   .swag-scan/run/ticket-report.json      the ticket's id, source and title, for the report header
 // It never says a change is "clean": it says what was reported and what could not be checked.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -14,7 +14,6 @@ import { renderReportHtml } from './report-html.mjs';
 
 export const REPORT_SCHEMA = 1;
 
-const STATUS_ICONS = { Todo: '🔲 Todo', Done: '✅ Done', Future: '🔮 Future' };
 const SEVERITY_ORDER = Object.keys(SEVERITIES);
 const tag = (severity) => `${SEVERITIES[severity].icon} ${SEVERITIES[severity].label}`;
 const plural = (count, word, many = `${word}s`) => `${count} ${count === 1 ? word : many}`;
@@ -57,11 +56,6 @@ export function buildReport({ summary, findings, ticket }, { now = new Date() } 
   const fixed = all.filter((f) => f.disposition === 'auto-fixed').sort(byOrder);
   const wouldFix = all.filter((f) => f.disposition === 'would-auto-fix').sort(byOrder);
 
-  const criteria = (ticket?.criteria ?? []).map((row) => ({
-    ...row,
-    findingIds: all.filter((f) => f.criteria.includes(String(row.id))).sort(byOrder).map((f) => f.id),
-  }));
-
   // One entry per distinct coverage line, naming the agents it applies to.
   const coverageByLine = new Map();
   for (const agent of summary.agents) {
@@ -98,7 +92,7 @@ export function buildReport({ summary, findings, ticket }, { now = new Date() } 
     branch: summary.branch, head: summary.head, base: summary.base,
     modelTokensInPass1: summary.modelTokens ?? 0,
     ticket: ticket ? { id: ticket.id, source: ticket.source, title: ticket.title } : null,
-    agents, counts, decisions, fixed, wouldFix, criteria,
+    agents, counts, decisions, fixed, wouldFix,
     coverage: { lines: coverageLines, unchecked: [...unchecked].map(([path, language]) => ({ path, language })) },
     nextStep,
   };
@@ -127,7 +121,7 @@ function fenced(text) {
 function detail(finding) {
   const lines = [`### ${finding.id} ${SEVERITIES[finding.severity].icon} ${finding.title}`, ''];
   if (finding.voiceLine) lines.push(`> **${finding.agentName}:** ${finding.voiceLine}`, '');
-  const facts = [location(finding), finding.rule ? `\`${finding.rule}\`` : '', finding.confidence ? `confidence ${finding.confidence}` : '', finding.criteria.length ? `criteria ${finding.criteria.join(', ')}` : ''].filter(Boolean);
+  const facts = [location(finding), finding.rule ? `\`${finding.rule}\`` : '', finding.confidence ? `confidence ${finding.confidence}` : ''].filter(Boolean);
   if (facts.length) lines.push(facts.join(' · '), '');
   if (finding.flaggedText) lines.push(fenced(finding.flaggedText), '');
   if (finding.evidence) lines.push(`**Evidence:** ${finding.evidence}`, '');
@@ -154,19 +148,6 @@ export function renderMarkdown(report) {
 
   if (report.fixed.length) out.push('## Done for you', '', table(report.fixed), '');
   if (report.wouldFix.length) out.push('## Would have been fixed (auto-fix was off)', '', 'Low-risk items with a safe fix. Nothing was changed.', '', table(report.wouldFix), '');
-
-  if (report.criteria.length) {
-    const showRepo = report.criteria.some((row) => row.repository);
-    out.push('## Acceptance criteria', '');
-    out.push(`| # | Title | ${showRepo ? 'Repository | ' : ''}Status | Findings |`, `| --- | --- | ${showRepo ? '--- | ' : ''}--- | --- |`);
-    const severityOf = new Map([...report.decisions, ...report.fixed, ...report.wouldFix].map((f) => [f.id, f.severity]));
-    for (const row of report.criteria) {
-      const linked = row.otherRepo ? 'Other repo, not scanned'
-        : row.findingIds.length ? row.findingIds.map((id) => `${id} ${SEVERITIES[severityOf.get(id)].icon}`).join(', ') : 'None linked';
-      out.push(`| ${row.id} | ${cell(row.title || row.description || '')} | ${showRepo ? `${cell(row.repository ?? '(all)')} | ` : ''}${STATUS_ICONS[row.status] ?? STATUS_ICONS.Todo} | ${linked} |`);
-    }
-    out.push('', `_Status comes from the ticket.${report.criteria.some((row) => !row.otherRepo && !row.findingIds.length) ? ' "None linked" means no agent tied a finding to that row, not that the row is verified.' : ''}_`, '');
-  }
 
   out.push('## Who looked at what', '', '| Agent | Result |', '| --- | --- |', ...report.agents.map((agent) => `| ${agent.name} | ${cell(agent.text)} |`), '');
 

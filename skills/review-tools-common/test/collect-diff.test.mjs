@@ -202,13 +202,16 @@ test('an empty diff is reported in one sentence with a suggested ref', (context)
   const { report, stderr } = collect(directory, 'HEAD');
   assert.equal(report.emptyDiff, true);
   assert.equal(report.files.length, 0);
-  assert.match(report.suggestion, /`main`.*1 commit ahead/);
-  assert.match(stderr, /no changes found against HEAD\. Try a different base, for example `main`/);
+  assert.match(report.suggestion, /no changes against the target branch were found/);
+  assert.match(report.suggestion, /check your current branch that is checked out, and confirm your target branch is correct in your config/);
+  assert.match(report.suggestion, /1 commit ahead of `main`/, 'a closer base with changes is still offered as a hint');
+  assert.match(stderr, /no changes found against HEAD\. I'm sorry, no changes against the target branch were found/);
 
   git(directory, ['checkout', '-q', 'main']);
   const onMain = collect(directory).report;
   assert.equal(onMain.emptyDiff, true);
-  assert.match(onMain.suggestion, /Commit or stage your changes/);
+  assert.match(onMain.suggestion, /confirm your target branch is correct in your config/);
+  assert.doesNotMatch(onMain.suggestion, /commit ahead/);
 });
 
 test('the summary reports changed, excluded and scanned counts with the gate size', (context) => {
