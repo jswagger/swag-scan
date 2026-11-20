@@ -187,12 +187,13 @@ Auto-fix is on by default for clear, low-risk findings. Dusty findings are never
 
 ## Security Auditor
 
-Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Coverage is heuristic, not exhaustive. A basic pass reviews common implementation risks (`CRIT-1xx`, `CRIT-2xx`), then an advanced pass looks at attack paths and architecture.
+Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Python, C#, TypeScript and JavaScript files are read in full so a statement written over several lines, or built from several string pieces, is matched as one. `.mjs`, `.cjs`, `.mts` and `.cts` count as JavaScript or TypeScript, and `.cshtml` and `.razor` as C#. The scan coverage lists, for each language, which rule families ran and which have no rules (`coverage.ruleFamilies`), so an empty result is never read as "safe". Coverage is heuristic, not exhaustive. A basic pass reviews common implementation risks (`CRIT-1xx`, `CRIT-2xx`), then an advanced pass looks at attack paths and architecture.
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
 | `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
 | `scan.projectStack` | `backend`, `frontend`, `full-stack`, or `unknown` | `backend` |
+| `scan.readOnlyPaths` | Globs for code that must only read data, such as `["src/analyze/**"]`. The scanner reads the list and reports which changed files match; the database-write rules that use it arrive in the next release. Empty means no path is treated as read-only. | `[]` |
 | `scope.maxRelatedFiles` / `maxRelationshipHops` | How far review follows related code | `5` / `1` |
 
 ## Model roles

@@ -3,7 +3,7 @@
 
 const SUPPORTED = [
   ['Python', /\.py$/i],
-  ['C#', /\.cs$/i],
+  ['C#', /\.(?:cs|cshtml|razor)$/i],
   ['TypeScript', /\.[cm]?tsx?$/i],
   ['JavaScript', /\.[cm]?jsx?$/i],
 ];

@@ -3,18 +3,27 @@
 import { readFileSync } from 'node:fs';
 import { renderCoverageLine, summarizeCoverage } from '../../review-tools-common/coverage.mjs';
 import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
+import { logicalStatements, looksLikeSql } from './statements.mjs';
 
 const configPath = new URL('../config.json', import.meta.url);
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
-const { isExcluded, isTestFile } = createFileFilters(config.scan);
+const { isExcluded, isTestFile, isReadOnlyPath } = createFileFilters(config.scan);
 
 function languageForPath(path) {
   if (/\.py$/i.test(path)) return 'python';
-  if (/\.cs$/i.test(path)) return 'csharp';
-  if (/\.tsx?$/i.test(path)) return 'typescript';
-  if (/\.jsx?$/i.test(path)) return 'javascript';
+  if (/\.(?:cs|cshtml|razor)$/i.test(path)) return 'csharp';
+  if (/\.(?:[cm]?ts|tsx)$/i.test(path)) return 'typescript';
+  if (/\.(?:[cm]?js|jsx)$/i.test(path)) return 'javascript';
   return undefined;
 }
+
+const readOnlyConfig = config.scan?.readOnlyPaths;
+const configuredReadOnlyPaths = Array.isArray(readOnlyConfig)
+  ? readOnlyConfig.filter((entry) => typeof entry === 'string' && entry.trim())
+  : [];
+const readOnlyWarning = readOnlyConfig === undefined || (Array.isArray(readOnlyConfig) && configuredReadOnlyPaths.length === readOnlyConfig.length)
+  ? undefined
+  : 'scan.readOnlyPaths must be a list of glob strings; entries that are not strings were ignored.';
 
 const input = await new Promise((resolve, reject) => {
   let data = '';
@@ -27,129 +36,152 @@ const input = await new Promise((resolve, reject) => {
 const rules = [
   {
     id: 'CRIT-101',
+    family: 'Injection (SQL, command, HTML)',
     description: 'Dynamic string construction near a query, command, or HTML sink',
     pattern: /\b(?:SELECT(?!\s*\()|INSERT|UPDATE|DELETE|WHERE|ORDER\s+BY|EXEC(?:UTE)?)\b.*(?:\$\{|\+\s*[\w$]|\.format\s*\(|\{[^}]+\})|(?:exec|spawn|innerHTML|outerHTML)\s*\(.*(?:\$\{|\+\s*[\w$])/i,
   },
   {
     id: 'CRIT-102',
+    family: 'Input validation',
     description: 'Possible blacklist-style input filtering',
     pattern: /\.(?:replace|replaceAll)\s*\(\s*(?:(['"`])(?:\\.|(?!\1)[^\\])*?(?:<|>|&|(?!\1)["']|\\["']|\\x3[cCeE]|\\x26|\\x22|\\x27)(?:\\.|(?!\1)[^\\])*?\1|\/(?:\\.|[^/\n])*?(?:<|>|&|"|'|\\x3[cCeE]|\\x26|\\x22|\\x27)(?:\\.|[^/\n])*?\/[gimsuy]*)/,
   },
   {
     id: 'CRIT-201',
+    family: 'Secrets',
     description: 'Possible hard-coded credential or secret assignment',
-    pattern: /(?:^|[^A-Za-z])(?:["']?(?:api[_-]?key|secret|password|passwd|token|credential|private[_-]?key|jwt[_-]?secret)["']?)\s*[:=]\s*(?:[^;\n]*?\bor\s*)?(["'`])[^\n"'`]+\1|\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqps?|ftp|sftp|https?):\/\/[^/\s:@]+:[^/\s@]+@/i,
+    pattern: /(?<![\w$.-])["']?[\w$.-]*(?:api[_-]?key|access[_-]?key|secret|password|passwd|token|credential|private[_-]?key|jwt[_-]?secret)(?:[_-]?(?:(?:access[_-]?)?key|value|string|token|secret|phrase))?["']?\s*[:=]\s*(?:[^;\n]*?\bor\s*)?(["'`])[^\n"'`]+\1|\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqps?|ftp|sftp|https?):\/\/[^/\s:@]+:[^/\s@]+@/i,
     redact: true,
   },
   {
     id: 'CRIT-202',
+    family: 'Cryptography and randomness',
     description: 'Predictable random source near a security-sensitive identifier',
-    pattern: /(?=.*\b(?:token|secret|session|auth|nonce|key|password|credential|id)\b)(?=.*\b(?:Math\.random|random\.(?:random|choice)|uuid\.uuid1|rand\s*\())/i,
+    pattern: /(?=.*(?:token|secret|session|nonce|password|credential|csrf|api[_-]?key|private[_-]?key|reset[_-]?code|verification[_-]?code|\b(?:auth|otp|salt)\b|(?<![a-z])key(?![a-z])))(?=.*(?:\bMath\.random|\brandom\.(?:random|choice)|\buuid\.uuid1|\brand\s*\(|\bnew\s+Random\s*\())/i,
     stackSensitive: true,
   },
   {
     id: 'CRIT-203',
+    family: 'Cryptography and randomness',
     description: 'Possible unauthenticated CBC encryption usage',
     pattern: /\b(?:aes[-_]?\d+-cbc|createCipheriv\s*\(\s*['"`]aes-\d+-cbc|modes\.CBC\s*\(|AES\.MODE_CBC\b|MODE_CBC\b)/i,
     stackSensitive: true,
   },
   {
     id: 'CRIT-301',
+    family: 'Error handling and logging',
     description: 'Possible empty catch block or swallowed exception',
     pattern: /\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}|\bexcept(?:\s+[^:]+)?\s*:\s*pass\b/i,
   },
   {
     id: 'CRIT-302',
+    family: 'Error handling and logging',
     description: 'Raw exception detail may be returned or rendered to users',
     pattern: /\b(?:error|err|exception)\.(?:stack|message)\b.*(?:res\.|response|return|render|send|json|toast|innerHTML)|(?:res\.|response|return|render|send|json|toast|innerHTML).*\b(?:error|err|exception)\.(?:stack|message)\b|(?:return|jsonify|HTTPException|detail\s*=)[^#\n]*(?:str|repr)\s*\(\s*(?:e|exc|err|exception)\b|(?:str|repr)\s*\(\s*(?:e|exc|err|exception)\b[^#\n]*(?:response|return|jsonify|HTTPException|detail\s*=)/i,
   },
   {
     id: 'CRIT-303',
+    family: 'Error handling and logging',
     description: 'Possible logging of request or sensitive data',
     pattern: /\b(?:console\.(?:log|info|debug)|logging\.(?:debug|info|warning|warn|error|exception|critical)|(?:logger|log)\.(?:info|debug|warn|warning|error|exception|critical))\s*\(.*(?:req(?:uest)?\.(?:body|json|data)|password|passwd|token|credit.?card|user(?:Object)?|payload)/i,
   },
   {
     id: 'CRIT-104',
+    family: 'Code and command execution',
     description: 'Possible shell command execution with shell enabled or os.system',
-    pattern: /\b(?:subprocess\.(?:run|Popen|call|check_call|check_output)|Popen)\s*\([^\n)]*\bshell\s*=\s*True\b|\bos\.system\s*\(/i,
+    pattern: /\b(?:subprocess\.(?:run|Popen|call|check_call|check_output)|Popen)\s*\(.*\bshell\s*=\s*True\b|\bos\.system\s*\(/i,
     languages: ['python'],
   },
   {
     id: 'CRIT-105',
+    family: 'Code and command execution',
     description: 'Dynamic code evaluation with eval or exec',
-    pattern: /\b(?:eval|exec)\s*\(/,
+    pattern: /(?<![.\w$])(?<!\bdef\s)(?<!\bfunction\s)(?:eval|exec)\s*\(|\b(?:window|globalThis|self)\s*\.\s*eval\s*\(|\b(?:child_process|childProcess|cp)\s*\.\s*exec(?:Sync)?\s*\(/,
     languages: ['python', 'javascript', 'typescript'],
   },
   {
     id: 'CRIT-106',
+    family: 'Unsafe deserialization',
     description: 'Potentially unsafe pickle or YAML deserialization',
     pattern: /\bpickle\.(?:load|loads)\s*\(|\byaml\.load\s*\(/i,
     languages: ['python'],
   },
   {
     id: 'CRIT-107',
+    family: 'TLS verification',
     description: 'TLS certificate verification is disabled',
     pattern: /\bverify\s*=\s*False\b/i,
     languages: ['python'],
   },
   {
     id: 'CRIT-108',
+    family: 'Unsafe deserialization',
     description: 'Use of the unsafe BinaryFormatter deserializer',
     pattern: /\bBinaryFormatter\b/,
     languages: ['csharp'],
   },
   {
     id: 'CRIT-109',
+    family: 'Unsafe deserialization',
     description: 'Newtonsoft.Json TypeNameHandling.All may enable unsafe polymorphic deserialization',
     pattern: /\bTypeNameHandling\s*\.\s*All\b/,
     languages: ['csharp'],
   },
   {
     id: 'CRIT-110',
+    family: 'Authorization',
     description: 'AllowAnonymous disables authorization on the annotated endpoint',
     pattern: /\[\s*AllowAnonymous\s*\]/,
     languages: ['csharp'],
   },
   {
     id: 'CRIT-111',
+    family: 'TLS verification',
     description: 'Server certificate validation callback may bypass TLS certificate checks',
     pattern: /\bServerCertificateValidationCallback\b/,
     languages: ['csharp'],
   },
   {
     id: 'CRIT-112',
+    family: 'Code and command execution',
     description: 'Process.Start launches an operating-system process; verify arguments and trust boundaries',
     pattern: /\bProcess\s*\.\s*Start\s*\(/,
     languages: ['csharp'],
   },
   {
     id: 'ARCH-403',
+    family: 'Infrastructure and permissions',
     description: 'Possible wildcard or administrator-level permission',
     pattern: /\b(?:role|permission|scope|policy|grant|action|resource)\b.{0,80}(?:['"`]\*['"`]|\b(?:db_owner|root|administrator|admin)\b)|(?:['"`]\*['"`]|\b(?:db_owner|root|administrator|admin)\b).{0,80}\b(?:role|permission|scope|policy|grant|action|resource)\b/i,
     stackSensitive: true,
   },
   {
     id: 'ARCH-404',
+    family: 'Authorization',
     description: 'Possible fail-open authorization or validation path',
     pattern: /(?:auth|authori[sz]|validat).*(?:failed|error|timeout).*(?:proceed|continue|allow|permit)|(?:proceed|continue|allow|permit).*(?:auth|authori[sz]|validat).*(?:failed|error|timeout)/i,
   },
   {
     id: 'ARCH-405',
+    family: 'Infrastructure and permissions',
     description: 'Infrastructure rule may expose a service to all IPv4 or IPv6 addresses',
     pattern: /\b0\.0\.0\.0\/0\b|::\/0\b/,
   },
   {
     id: 'ARCH-406',
+    family: 'Infrastructure and permissions',
     description: 'Cloud resource or storage configuration may allow public access',
     pattern: /\bpublicly_accessible\s*[:=]\s*true\b|\bpublic[-_]read\b|\b(?:block_public_acls|block_public_policy|restrict_public_buckets)\s*[:=]\s*false\b/i,
   },
   {
     id: 'ARCH-407',
+    family: 'Infrastructure and permissions',
     description: 'Container or workload configuration may grant privileged execution',
     pattern: /\bprivileged\s*:\s*true\b|\ballowPrivilegeEscalation\s*:\s*true\b|\b(?:runAsUser|user)\s*:\s*0\b|^\s*USER\s+root\b/i,
   },
   {
     id: 'ARCH-408',
+    family: 'Infrastructure and permissions',
     description: 'Infrastructure configuration may disable encryption at rest',
     pattern: /\b(?:encrypt(?:ion)?_enabled|storage_encrypted|encrypted)\s*[:=]\s*(?:false|0)\b/i,
   },
@@ -172,6 +204,7 @@ try {
 const candidates = [];
 const candidateKeys = new Set();
 const scannedFiles = [];
+const readOnlyFiles = [];
 
 function addCandidate(candidate) {
   const key = `${candidate.ruleId}:${candidate.path}:${candidate.line}:${candidate.side ?? 'added'}`;
@@ -261,13 +294,50 @@ function isSafeYamlLoad(file, change, sourceLines) {
   return /\b(?:C)?SafeLoader\b/.test(context);
 }
 
+function addStatementCandidates(file, language, statements, testFile) {
+  const addedLines = (file.changes ?? []).filter((change) => change.side === 'added').map((change) => change.line);
+  const lowerForTests = testFile && config.scan?.testFiles?.mode === 'lower-confidence';
+  for (const statement of statements) {
+    const changedLine = addedLines.find((line) => line >= statement.firstLine && line <= statement.lastLine);
+    if (changedLine === undefined || statement.lastLine === statement.firstLine) continue;
+    const alreadyReported = (ruleId) => candidates.some((candidate) =>
+      candidate.ruleId === ruleId && candidate.path === file.path && candidate.side !== 'removed'
+      && candidate.line >= statement.firstLine && candidate.line <= statement.lastLine);
+
+    if (language === 'python' && !alreadyReported('CRIT-104')
+      && /\b(?:subprocess\.(?:run|Popen|call|check_call|check_output)|Popen)\s*\([\s\S]*?\bshell\s*=\s*True\b/.test(statement.skeleton)) {
+      addCandidate({
+        ruleId: 'CRIT-104',
+        path: file.path,
+        line: changedLine,
+        description: 'Possible shell command execution with shell enabled (call spans several lines)',
+        evidence: statement.text.slice(0, 240),
+        ...(lowerForTests ? { confidence: 'lower' } : {}),
+      });
+    }
+
+    if (!alreadyReported('CRIT-101') && statement.dynamic && looksLikeSql(statement.sql)) {
+      addCandidate({
+        ruleId: 'CRIT-101',
+        path: file.path,
+        line: changedLine,
+        description: 'SQL built from several pieces across lines; confirm every value is passed as a parameter, not joined into the text',
+        evidence: statement.text.slice(0, 240),
+        confidence: 'lower',
+      });
+    }
+  }
+}
+
 for (const file of report.files) {
   if (isExcluded(file.path)) continue;
   const testFile = isTestFile(file.path);
   if (testFile && config.scan?.testFiles?.mode === 'skip') continue;
   scannedFiles.push(file);
+  if (isReadOnlyPath(file.path)) readOnlyFiles.push(file.path);
   const language = languageForPath(file.path);
-  const sourceLines = ['python', 'csharp'].includes(language) ? readSourceLines(file) : undefined;
+  const sourceLines = language ? readSourceLines(file) : undefined;
+  const statements = sourceLines ? logicalStatements(sourceLines, language) : [];
   const pythonSqlFstrings = findPythonSqlFstringLines(file, sourceLines);
   const csharpSqlLines = new Set(findCSharpSqlLines(file, sourceLines));
   const pythonSqlFstringLines = new Set(pythonSqlFstrings.flatMap((string) =>
@@ -354,7 +424,83 @@ for (const file of report.files) {
       });
     }
   }
+
+  addStatementCandidates(file, language, statements, testFile);
 }
+
+const FAMILY_ORDER = [
+  'Injection (SQL, command, HTML)',
+  'Input validation',
+  'Secrets',
+  'Cryptography and randomness',
+  'Code and command execution',
+  'Unsafe deserialization',
+  'TLS verification',
+  'Authorization',
+  'Error handling and logging',
+  'Removed security controls',
+  'Infrastructure and permissions',
+];
+
+// Rules that are not in the `rules` table: they run on a subset of languages, or compare removed lines.
+const extraRuleFamilies = [
+  { id: 'CRIT-101', family: 'Injection (SQL, command, HTML)', languages: ['python', 'csharp', 'typescript', 'javascript'] },
+  { id: 'CRIT-104', family: 'Code and command execution', languages: ['python'] },
+  { id: 'CRIT-301', family: 'Error handling and logging', languages: ['python'] },
+  { id: 'REG-401', family: 'Removed security controls' },
+];
+
+function rulesForLanguage(language) {
+  return [...rules, ...extraRuleFamilies].filter((rule) => !rule.languages || rule.languages.includes(language));
+}
+
+function ruleFamiliesFor(language) {
+  const byFamily = new Map();
+  for (const rule of rulesForLanguage(language)) {
+    const ids = byFamily.get(rule.family) ?? new Set();
+    ids.add(rule.id);
+    byFamily.set(rule.family, ids);
+  }
+  const ran = FAMILY_ORDER.filter((family) => byFamily.has(family))
+    .map((family) => ({ family, rules: [...byFamily.get(family)].sort() }));
+  const notCovered = FAMILY_ORDER.filter((family) => !byFamily.has(family));
+  return { ran, notCovered };
+}
+
+const languageNames = { python: 'Python', csharp: 'C#', typescript: 'TypeScript', javascript: 'JavaScript' };
+const filesByLanguage = new Map();
+for (const file of scannedFiles) {
+  const language = languageForPath(file.path);
+  filesByLanguage.set(language, (filesByLanguage.get(language) ?? 0) + 1);
+}
+
+const ruleFamilies = [...filesByLanguage.entries()]
+  .sort(([a], [b]) => String(a).localeCompare(String(b)))
+  .map(([language, files]) => ({
+    language: language ?? 'other',
+    label: language ? languageNames[language] : 'Other files (no language detected)',
+    files,
+    ...ruleFamiliesFor(language),
+  }));
+
+const ruleFamiliesLine = ruleFamilies.length
+  ? `Rule families that ran: ${ruleFamilies.map((entry) => {
+    const counted = `${entry.ran.length} of ${FAMILY_ORDER.length} families`;
+    const missing = entry.notCovered.length ? `, no rules for ${entry.notCovered.join(' or ')}` : '';
+    return `${entry.label} (${entry.files} ${entry.files === 1 ? 'file' : 'files'}): ${counted}${missing}`;
+  }).join('; ')}. No candidates does not mean safe.`
+  : 'No scanned files, so no rule families ran.';
+
+const readOnlyPaths = {
+  configured: configuredReadOnlyPaths,
+  matchedFiles: readOnlyFiles,
+  note: configuredReadOnlyPaths.length
+    ? (readOnlyFiles.length
+      ? `${readOnlyFiles.length} changed ${readOnlyFiles.length === 1 ? 'file is' : 'files are'} inside scan.readOnlyPaths.`
+      : 'No changed file is inside scan.readOnlyPaths.')
+    : 'scan.readOnlyPaths is empty, so no path is treated as read-only.',
+  ...(readOnlyWarning ? { warning: readOnlyWarning } : {}),
+};
 
 const pythonFiles = scannedFiles.filter((file) => file.path.endsWith('.py'));
 const csharpFiles = scannedFiles.filter((file) => languageForPath(file.path) === 'csharp');
@@ -382,6 +528,9 @@ process.stdout.write(`${JSON.stringify({
         ? 'Targeted C# heuristics ran; this is not exhaustive security analysis.'
         : 'No changed C# files were collected.',
     },
+    ruleFamilies,
+    ruleFamiliesLine,
+    readOnlyPaths,
     detectedLanguages: [...new Set(scannedFiles.map((file) => languageForPath(file.path)).filter(Boolean))],
     infrastructure: {
       changedFiles: infrastructureFiles.length,

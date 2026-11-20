@@ -13,6 +13,11 @@ test('supported languages are JS, TS, C# and Python; everything else is unsuppor
   assert.equal(supportedLanguage('Service.cs'), 'C#');
   assert.equal(supportedLanguage('x.tsx'), 'TypeScript');
   assert.equal(supportedLanguage('x.mjs'), 'JavaScript');
+  assert.equal(supportedLanguage('x.cjs'), 'JavaScript');
+  assert.equal(supportedLanguage('x.mts'), 'TypeScript');
+  assert.equal(supportedLanguage('x.cts'), 'TypeScript');
+  assert.equal(supportedLanguage('Views/Admin.cshtml'), 'C#');
+  assert.equal(supportedLanguage('Pages/Admin.razor'), 'C#');
   assert.equal(supportedLanguage('main.go'), undefined);
   assert.equal(unsupportedLanguage('src/main.go'), 'Go');
   assert.equal(unsupportedLanguage('weird.xyz'), '.xyz');

@@ -30,3 +30,13 @@ test('missing config yields filters that match nothing', () => {
   assert.equal(isExcluded('anything.js'), false);
   assert.equal(isTestFile('anything.test.js'), false);
 });
+
+test('readOnlyPaths globs mark files as read-only, and a missing or malformed list marks none', () => {
+  const { isReadOnlyPath } = createFileFilters({ readOnlyPaths: ['src/analyze/**', 'reports/*.sql', 42, ''] });
+  assert.equal(isReadOnlyPath('src/analyze/run.py'), true);
+  assert.equal(isReadOnlyPath('src/analyze/deep/query.py'), true);
+  assert.equal(isReadOnlyPath('reports/monthly.sql'), true);
+  assert.equal(isReadOnlyPath('src/ingest/run.py'), false);
+  assert.equal(createFileFilters({}).isReadOnlyPath('src/analyze/run.py'), false);
+  assert.equal(createFileFilters({ readOnlyPaths: 'src/analyze/**' }).isReadOnlyPath('src/analyze/run.py'), false);
+});
