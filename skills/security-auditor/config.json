@@ -34,7 +34,8 @@
         "**/tests/**"
       ]
     },
-    "projectStack": "backend"
+    "projectStack": "backend",
+    "readOnlyPaths": []
   },
   "scope": {
     "maxRelatedFiles": 5,

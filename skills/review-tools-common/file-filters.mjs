@@ -19,9 +19,13 @@ function matches(patterns, filePath) {
 export function createFileFilters(scanConfig = {}) {
   const excludePatterns = (scanConfig.exclude ?? []).map(compileGlob);
   const testPatterns = (scanConfig.testFiles?.patterns ?? []).map(compileGlob);
+  const readOnlyPatterns = (Array.isArray(scanConfig.readOnlyPaths) ? scanConfig.readOnlyPaths : [])
+    .filter((pattern) => typeof pattern === 'string' && pattern.trim())
+    .map(compileGlob);
 
   return {
     isExcluded: (filePath) => matches(excludePatterns, filePath),
     isTestFile: (filePath) => matches(testPatterns, filePath),
+    isReadOnlyPath: (filePath) => matches(readOnlyPatterns, filePath),
   };
 }
