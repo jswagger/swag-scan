@@ -26,7 +26,6 @@ When the scan finishes you get one decisions-first report:
 
 - what needs your decision (🔴 Critical, 🟡 Feature gap or design issue, ✅ Cleanup),
 - what was fixed,
-- your ticket's acceptance criteria, with their status and the findings linked to them,
 - who looked at what, and the language coverage.
 
 ## The crew

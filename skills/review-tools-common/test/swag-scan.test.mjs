@@ -114,12 +114,12 @@ test('unsupported languages show as unchecked in the summary', (context) => {
   assert.match(summary.text, /⚪ Unchecked: 1 file in Go/);
 });
 
-test('an empty diff is one sentence per agent with a suggestion', (context) => {
+test('an empty diff warns the user to check the checked-out branch and the target branch in their config', (context) => {
   const repo = fixture(context);
   git(repo, ['checkout', '-q', 'main']);
   const summary = runScan({ repo });
   assert(summary.agents.every((agent) => agent.status === 'empty'));
-  assert.match(summary.text, /Analyst \(Bug Hunter\): no changes to check\. Commit or stage/);
+  assert.match(summary.text, /Analyst \(Bug Hunter\): no changes to check\. I'm sorry, no changes against the target branch were found\. Please check your current branch that is checked out, and confirm your target branch is correct in your config\./);
 });
 
 test('--agents limits who runs, in the fixed order', (context) => {
@@ -280,4 +280,46 @@ test('config show, get and set work through the CLI and keep other keys', (conte
   assert.equal(cli('nope').status, 1);
   assert.equal(JSON.parse(readFileSync(env.SWAG_SCAN_SETTINGS, 'utf8')).maxFileLines, 1200, 'a bad value changes nothing');
   assert.match(configCommand({ action: 'path', args: [] }, { env }), /settings\.json$/);
+});
+
+test('any branch name works: the checked-out branch is scanned and no naming convention is required', (context) => {
+  for (const branch of ['wip/my_changes', 'JeremyStuff', 'no-ticket-id-here']) {
+    const repo = fixture(context, { branch });
+    const summary = runScan({ repo });
+    assert.equal(summary.branch, branch);
+    assert(summary.agents.every((agent) => agent.status === 'done'), `${branch} was scanned`);
+    assert.equal(summary.ticket?.found ?? false, false, 'no ticket ID in the name means no ticket, not an error');
+  }
+});
+
+test('a branch with the same name as the target branch has no diff, so the user gets the warning', (context) => {
+  const repo = fixture(context, { branch: 'develop' });
+  const summary = runScan({ repo, base: 'develop' });
+  assert(summary.agents.every((agent) => agent.status === 'empty'));
+  assert.match(summary.text, /no changes against the target branch were found/);
+  assert.match(summary.text, /confirm your target branch is correct in your config/);
+});
+
+test('the repository can live on GitHub, Bitbucket or anywhere else: only local git is used', (context) => {
+  for (const url of ['git@github.com:acme/app.git', 'https://bitbucket.org/acme/app.git', 'git@bitbucket.example.com:acme/app.git', 'ssh://git.internal.example/acme/app.git']) {
+    const repo = fixture(context);
+    git(repo, ['remote', 'add', 'origin', url]);
+    const summary = runScan({ repo });
+    assert(summary.agents.every((agent) => agent.status === 'done'), `${url} was scanned`);
+  }
+});
+
+test('the report has no acceptance-criteria section and findings carry no criteria links', (context) => {
+  const repo = fixture(context);
+  const tickets = mkdtempSync(join(tmpdir(), 'swag-tickets-'));
+  context.after(() => rmSync(tickets, { recursive: true, force: true }));
+  writeFileSync(join(tickets, 'PROJ-123.md'), '## Description\n\nSafe lookups.\n\n## Acceptance Criteria\n\n| # | Title | Status |\n|---|---|---|\n| 1 | Parameterized queries | Done |\n');
+  const summary = runScan({ repo, ticketDir: tickets });
+  assert.equal(existsSync(join(repo, '.swag-scan', 'run', 'ticket-report.json')), true, 'the header still names the ticket');
+  const saved = JSON.parse(readFileSync(join(repo, '.swag-scan', 'run', 'ticket-report.json'), 'utf8'));
+  assert.equal('criteria' in saved, false);
+  assert.equal('criteriaIds' in summary.ticket, false);
+  const reviewerText = JSON.parse(readFileSync(join(repo, '.swag-scan', 'run', 'bug-hunter-context.json'), 'utf8')).ticket.content;
+  assert.match(reviewerText, /Parameterized queries/, 'the criteria text still reaches the reviewers as context');
+  assert.doesNotMatch(reviewerText, /Done/);
 });

@@ -3,7 +3,7 @@
 //
 // Agent input (what the agent writes):
 //   { findings: [{ severity, title, file?, line?, locations?, flaggedText?, rule?, evidence?, verify?, recommendation?,
-//                  disposition?, criteria?, confidence?, voiceLine?, fixNote? }],
+//                  disposition?, confidence?, voiceLine?, fixNote? }],
 //     clean: [{ area, note? } | "area"], dismissed: [{ rule?, file?, line?, reason }] }
 // Saved output: see buildFindingsReport(). Documented for people in docs/REFERENCE.md ("Findings format").
 
@@ -39,7 +39,7 @@ function locationsOf(finding) {
  * A critical finding needs evidence (a concrete failure scenario or proof) and a recommendation or something to verify, a
  * design issue needs the one thing to verify, and a cleanup needs a recommendation. This is the same bar the tools already set.
  */
-export function validateAgentFindings(input, { agent, criteriaIds } = {}) {
+export function validateAgentFindings(input, { agent } = {}) {
   const problems = [];
   if (!AGENT_PREFIX[agent]) problems.push(`Unknown agent "${agent}".`);
   if (!input || !Array.isArray(input.findings)) {
@@ -71,14 +71,6 @@ export function validateAgentFindings(input, { agent, criteriaIds } = {}) {
     if (finding?.line !== undefined && finding.line !== null && !(Number.isInteger(finding.line) && finding.line > 0)) {
       problems.push(`${label}: "line" must be a positive whole number (the line in the new version of the file).`);
     }
-    if (finding?.criteria !== undefined) {
-      if (!Array.isArray(finding.criteria)) problems.push(`${label}: "criteria" must be a list of acceptance-criterion ids.`);
-      else if (criteriaIds) {
-        for (const id of finding.criteria) {
-          if (!criteriaIds.includes(String(id))) problems.push(`${label}: criterion "${id}" is not in the ticket (known: ${criteriaIds.join(', ') || 'none'}).`);
-        }
-      }
-    }
   });
   list(input.clean).forEach((entry, index) => {
     if (typeof entry !== 'string' && !hasText(entry?.area)) problems.push(`clean[${index}]: "area" is required.`);
@@ -101,7 +93,6 @@ function normalizeFinding(finding, id) {
     ...(hasText(finding.evidence) ? { evidence: finding.evidence.trim() } : {}),
     ...(hasText(finding.verify) ? { verify: finding.verify.trim() } : {}),
     ...(hasText(finding.recommendation) ? { recommendation: finding.recommendation.trim() } : {}),
-    criteria: list(finding.criteria).map(String),
     ...(finding.confidence ? { confidence: finding.confidence } : {}),
     ...(hasText(finding.fixNote) ? { fixNote: finding.fixNote.trim() } : {}),
     ...(hasText(finding.voiceLine) ? { voiceLine: finding.voiceLine.trim() } : {}),
@@ -110,8 +101,8 @@ function normalizeFinding(finding, id) {
 }
 
 /** Builds the saved report: validated findings sorted critical first, numbered per agent, with counts and coverage. */
-export function buildFindingsReport(input, { agent, tool, coverage, base, head, now = new Date(), criteriaIds } = {}) {
-  const problems = validateAgentFindings(input, { agent, criteriaIds });
+export function buildFindingsReport(input, { agent, tool, coverage, base, head, now = new Date() } = {}) {
+  const problems = validateAgentFindings(input, { agent });
   if (problems.length) throw new Error(`Invalid findings:\n- ${problems.join('\n- ')}`);
 
   const sorted = input.findings
@@ -160,7 +151,6 @@ export function fromBugHunter(input) {
     recommendation: finding.recommendation,
     disposition: finding.autoFixed ? 'auto-fixed' : 'needs-decision',
     fixNote: finding.fixNote,
-    criteria: finding.criteria,
     confidence: finding.confidence,
     voiceLine: finding.voiceLine,
   });

@@ -284,7 +284,6 @@ const COLUMN_NAMES = {
   repository: ['repository', 'repo', 'repositories', 'repos'],
   branch: ['branch', 'feature branch'],
   base: ['base', 'base ref', 'base branch', 'target'],
-  status: ['status', 'state'],
 };
 
 function columnMap(header) {
@@ -294,14 +293,6 @@ function columnMap(header) {
     if (index !== -1) map[field] = index;
   }
   return map;
-}
-
-export function normalizeStatus(value = '') {
-  const text = value.toLowerCase();
-  if (value.includes('✅') || /\b(done|complete|completed|finished|closed)\b/.test(text)) return 'Done';
-  if (value.includes('🔮') || /\b(future|later|backlog|deferred|out of scope)\b/.test(text)) return 'Future';
-  if (value.includes('🔲') || /\b(todo|to do|open|not started|pending)\b/.test(text) || value === '') return 'Todo';
-  return 'Todo';
 }
 
 /** Splits lines into runs of table rows. Each table has its own header, so two tables are never read as one. */
@@ -328,7 +319,6 @@ export function parseCriteria(lines) {
       title: row[columns.title] ?? '',
       description: row[columns.description] ?? '',
       repository: row[columns.repository] || undefined,
-      status: columns.status !== undefined ? normalizeStatus(row[columns.status]) : 'Todo',
     }));
   });
   if (fromTables.length) return fromTables;
@@ -343,7 +333,6 @@ export function parseCriteria(lines) {
       title: '',
       description: labelled?.[2] ?? text,
       repository: undefined,
-      status: /\[[xX]\]/.test(line) ? 'Done' : 'Todo',
     });
   }
   return items;
@@ -386,22 +375,6 @@ export function parseRepositories(lines) {
   return repositories;
 }
 
-const simplify = (name = '') => name.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-/**
- * Splits criteria into those for the repository being scanned and those for other repositories. A criterion with no
- * repository applies everywhere. When no criterion names this repository, nothing is filtered: we cannot tell which are ours.
- */
-export function scopeCriteria(criteria, repoName) {
-  const mine = simplify(repoName);
-  const matches = (row) => {
-    const theirs = simplify(row.repository);
-    return Boolean(mine && theirs && (theirs.includes(mine) || mine.includes(theirs)));
-  };
-  const nameThisRepo = criteria.some((row) => row.repository && matches(row));
-  return criteria.map((row) => ({ ...row, otherRepo: Boolean(nameThisRepo && row.repository && !matches(row)) }));
-}
-
 const withoutBlank = (lines) => lines.join('\n').trim();
 
 /**
@@ -430,7 +403,7 @@ export function parseTicket(text) {
   const repositories = pick('repositories').flatMap((section) => parseRepositories(section.lines));
   const omittedSections = sections.slice(1).filter((section) => section.kind === 'log' || section.kind === 'other').map((section) => section.heading);
 
-  // Status is deliberately not passed on: it says what was already built, which biases a review.
+  // The criteria are context for the reviewers: they explain what the ticket is for. Nothing here tracks or reports their status.
   const criteriaLines = acceptanceCriteria.length
     ? acceptanceCriteria.map((row) => `- AC ${row.id}${row.title ? ` ${row.title}` : ''}${row.description ? `: ${row.description}` : ''}${row.repository ? ` (repository: ${row.repository})` : ''}`).join('\n')
     : criteriaText;

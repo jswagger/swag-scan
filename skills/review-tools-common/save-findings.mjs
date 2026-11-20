@@ -49,7 +49,6 @@ export function saveFindings({ agent, text, format = 'native', runDir, now = new
     coverage: entry.coverage ? { checked: entry.coverage.checked, unchecked: entry.coverage.unchecked, line: entry.coverage.line } : null,
     base: summary.base?.ref,
     head: summary.head,
-    criteriaIds: summary.ticket?.criteriaIds,
     now,
   });
   mkdirSync(runDir, { recursive: true });

@@ -41,9 +41,9 @@ Each agent hands in its judged findings in one shared shape, saved by `skills/re
 | `auto-fixed` | The Inspector fixed it. Needs a `fixNote`. Listed in the report, not commented on in a review view. |
 | `would-auto-fix` | A safe fix exists but auto-fix was off for this run (for example the first, report-only run). |
 
-Other fields: `title`, `rule`, `file` and `line` (the line in the new version of the file, or a `locations` list), `flaggedText` (the exact code on that line, so the finding can be found again after fixes), `criteria` (ids of the ticket's acceptance criteria it relates to, checked against the ticket), `confidence`, and `voiceLine` (the agent's one-sentence voice, kept apart from the facts). The Analyst can hand in Bug Hunter's own findings file with `--format bug-hunter`: probable bugs become critical, suspicious items become design issues.
+Other fields: `title`, `rule`, `file` and `line` (the line in the new version of the file, or a `locations` list), `flaggedText` (the exact code on that line, so the finding can be found again after fixes), `confidence`, and `voiceLine` (the agent's one-sentence voice, kept apart from the facts). The Analyst can hand in Bug Hunter's own findings file with `--format bug-hunter`: probable bugs become critical, suspicious items become design issues.
 
-Ticket criterion status (todo, done, future) is saved separately in `.swag-scan/run/ticket-report.json` for the report, and kept out of the files the agents read, because what is already built would bias a review.
+The ticket's id, source and title are saved in `.swag-scan/run/ticket-report.json` for the report header. Acceptance criteria are never tracked, scored or reported: reviewers only read them as context for what the ticket is meant to do, and a Status column in a ticket file is ignored.
 
 ### Event log
 
@@ -115,14 +115,14 @@ node skills/review-tools-common/collect-diff.mjs \
 
 Which diff is reviewed:
 
-- No argument: the base is detected automatically. It tries `origin/HEAD`, `develop`, `test`, `main`, then `master`, and picks the closest one your branch grew from. The collector prints which one it chose. If it finds no changes, it says so and suggests a ref.
+- No argument: the base is detected automatically. It tries `origin/HEAD`, `develop`, `test`, `main`, then `master`, and picks the closest one your branch grew from. The collector prints which one it chose. The branch you have checked out is scanned, whatever it is called, and the repository can be hosted anywhere (GitHub, Bitbucket or anything else): only local `git` is used. If it finds no changes, for example because the checked-out branch is the target branch, it says: "I'm sorry, no changes against the target branch were found. Please check your current branch that is checked out, and confirm your target branch is correct in your config."
 - A ref such as `origin/main` is compared from `git merge-base <ref> HEAD`, so target-only commits are excluded.
 - `HEAD` compares only the working tree, which is often empty on a clean feature branch.
 - Untracked, non-ignored text files are included. Binary and oversized files are skipped.
 
 ## Bug Hunter
 
-A regression safety net. It looks for removed guards, dropped awaits, changed contracts, and broken callers, then checks the change against your ticket's acceptance criteria.
+A regression safety net. It looks for removed guards, dropped awaits, changed contracts, and broken callers, then reads your ticket, including anything labeled Acceptance Criteria, as context for what the change is meant to do and why it may be wrong.
 
 - **Rules:** `REMOVED_GUARD`, `REMOVED_AWAIT`, `REMOVED_ERROR_HANDLING`, `REMOVED_CLEANUP`, `MISSING_RELEASE`, `REMOVED_EARLY_EXIT`, `BEHAVIOR_CHANGE_PAIR`, `SIGNATURE_CHANGED`, `REMOVED_TEST_ASSERTION`, `TEST_DISABLED`.
 - **Packets:** scripts rank findings by risk and bundle them with surrounding code and callers. Large diffs hit a size gate and ask whether to review everything or only the riskiest changes.
@@ -134,7 +134,7 @@ A regression safety net. It looks for removed guards, dropped awaits, changed co
 | --- | --- | --- |
 | `autoFix` | Fix unambiguous 🔴 bugs. When `false`, no files are ever edited | `false` |
 | `diff.maxDiffBytes` | Size gate for the diff | `102400` |
-| `ticketContext` | Ticket used as acceptance criteria. `--ticket <id-or-path>` overrides; see [Ticket files](#ticket-files) | `null` |
+| `ticketContext` | Ticket used as context for the intent of the change. `--ticket <id-or-path>` overrides; see [Ticket files](#ticket-files) | `null` |
 | `repositoryContext` | Nearby docs for local patterns and invariants | `null` |
 | `rules.disabled` / `rules.severityOverrides` | Tune noisy rules | none |
 | `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
@@ -146,13 +146,13 @@ When nothing has changed since the last review (same commit, same base, same con
 
 ### Ticket files
 
-Bug Hunter checks the change against a ticket's acceptance criteria. It needs no configuration if the branch name holds a ticket ID (such as `feature/PROJ-123`) and it can find the ticket folder.
+Bug Hunter reads a ticket to understand what the change is for. It needs no configuration if the branch name holds a ticket ID (such as `feature/PROJ-123`) and it can find the ticket folder.
 
 - **Which ticket:** `--ticket PROJ-123` (an ID) or `--ticket path/to/file.md` (a path, inside or outside the repo). With neither, the ID is taken from the branch name. A `--ticket` you typed that cannot be found (a wrong path or an unknown ID) stops the run before any model review, with the reason and, for a path, the closest real file it can find. A ticket guessed from the branch name that is missing only adds a one-line note.
 - **Where tickets live:** an ID is looked up as `PROJ-123.xml`, `.md` or `.txt` (or `PROJ-123-any-title.xml`; a browser's `PROJ-123 (1).xml` works too) in the first of: `--ticket-dir`, the `SWAG_SCAN_TICKET_DIR` environment variable, `ticketSourcePath` in `~/.swag-scan/settings.json` (a per-user file, outside any repo; older name `ticketFolder`), or `ticketContext.path` in the repo's config. There is no built-in default folder.
 - **Jira XML exports (the easy way):** open the ticket in Jira, choose Export, then **Export XML**. Jira shows the XML in a new browser tab instead of downloading it, so press Ctrl+S (Cmd+S on Mac) and save it as `PROJ-123.xml` in your ticket folder. If your browser offers a file type, choose "Webpage, HTML Only" and make sure the name ends in `.xml`. Copying the whole page into a new text file named `PROJ-123.xml` works too. Swag Scan reads it with no libraries and takes only the issue key, the summary, the description, and any custom field with "Acceptance" in its name (such as `Acceptance Criteria`). If the description has a line that says only "Acceptance Criteria" followed by a list, that list is used too. Comments, status, links and other fields are left out. Jira has written the description's HTML in three ways over the years (escaped, written straight into the XML, or in a CDATA block), and all three are read. A file from a search holds several issues; the one whose key matches is used. A custom field that Jira leaves empty in its XML cannot be recovered; if criteria go missing, check the field in the exported file.
 - **Word and Excel files** (`.doc`, `.docx`, `.xls`, `.xlsx`) are not read. Jira's own Word and Excel exports are HTML saved under those names, and real Office files need a library; use Export XML instead.
-- **What reviewers see:** only the title, the description and the acceptance criteria. Implementation or development logs, notes and any other section are removed, because they describe what was built and would bias the review. The report names the sections that were left out. A ticket with no headings is passed whole, with a note.
+- **What reviewers see:** only the title, the description and the acceptance criteria, as context for the intent of the change. Criteria are not a checklist, and their status is never tracked or reported. Implementation or development logs, notes and any other section are removed, because they describe what was built and would bias the review. The report names the sections that were left out. A ticket with no headings is passed whole, with a note.
 - **Format assumed (tolerant, markdown):**
 
   ```markdown
@@ -161,16 +161,16 @@ Bug Hunter checks the change against a ticket's acceptance criteria. It needs no
   Free text or a "## Description" section.
 
   ## Acceptance Criteria
-  | # | Title | Description | Repository | Status |
-  |---|-------|-------------|------------|--------|
-  | 1 | Login form | Shows email and password | web-app | 🔲 Todo |
+  | # | Title | Description | Repository |
+  |---|-------|-------------|------------|
+  | 1 | Login form | Shows email and password | web-app |
 
   ## Repositories
   - web-app: feature/PROJ-123
   - api (feature/PROJ-123, base develop)
   ```
 
-  Table columns may be in any order and any subset, and bullets, numbered items or checkboxes also work for criteria. Status is `🔲 Todo`, `✅ Done` or `🔮 Future` (words such as "done" are understood). Repositories can be a table, or bullets like `name: branch`, `name (branch, base ref)` or `name @ branch`. Status and repositories are parsed for the later consolidated report and multi-repo runs; reviewers are not given the status.
+  Table columns may be in any order and any subset, and bullets, numbered items or checkboxes also work for criteria. A Status column or a checked box is ignored, because most teams do not track criteria the same way. Repositories can be a table, or bullets like `name: branch`, `name (branch, base ref)` or `name @ branch`.
 
 ## Code Sweeper
 
