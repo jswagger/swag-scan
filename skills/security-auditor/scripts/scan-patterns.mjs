@@ -3,11 +3,17 @@
 import { readFileSync } from 'node:fs';
 import { renderCoverageLine, summarizeCoverage } from '../../review-tools-common/coverage.mjs';
 import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
+import { createDataAndLlmRules } from './data-and-llm-rules.mjs';
 import { logicalStatements, looksLikeSql } from './statements.mjs';
 
-const configPath = new URL('../config.json', import.meta.url);
+// `--config <file>` points the scanner at another config (the same shape as config.json); the default is the one next to this skill.
+const configFlag = process.argv.indexOf('--config');
+const configPath = configFlag !== -1 && process.argv[configFlag + 1]
+  ? process.argv[configFlag + 1]
+  : new URL('../config.json', import.meta.url);
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
-const { isExcluded, isTestFile, isReadOnlyPath } = createFileFilters(config.scan);
+const { isExcluded, isTestFile, isReadOnlyPath, isPromptFile } = createFileFilters(config.scan);
+const dataAndLlm = createDataAndLlmRules(config.scan);
 
 function languageForPath(path) {
   if (/\.py$/i.test(path)) return 'python';
@@ -32,6 +38,23 @@ const input = await new Promise((resolve, reject) => {
   process.stdin.on('end', () => resolve(data));
   process.stdin.on('error', reject);
 });
+
+const SENSITIVE_ARGUMENT_WORDS = new Set(['request', 'req', 'body', 'payload', 'user', 'password', 'passwd', 'token', 'secret', 'credit', 'ssn']);
+const LOG_CALL = /\b(?:console\.(?:log|info|debug)|logging\.(?:debug|info|warning|warn|error|exception|critical)|(?:logger|log)\.(?:info|debug|warn|warning|error|exception|critical))\s*\(/;
+
+/** CRIT-303 looks at what is logged, not at the message text: a word inside a plain string, or a caught exception, is not a lead. */
+function loggedArgumentsAreSensitive(text) {
+  const call = text.match(LOG_CALL);
+  if (!call) return false;
+  const argumentsText = text.slice(call.index + call[0].length).replace(/(["'`])((?:\\.|(?!\1)[^\\])*)\1/g, (whole, quote, body, offset, all) => {
+    const prefix = all[offset - 1];
+    const interpolated = quote === '`' || prefix === 'f' || prefix === 'F' || prefix === '$';
+    if (!interpolated) return ' ';
+    return ` ${[...body.matchAll(/\$\{([^}]*)\}|\{([^{}]+)\}/g)].map((match) => match[1] ?? match[2]).join(' ')} `;
+  });
+  return (argumentsText.match(/[A-Za-z_$][\w$]*/g) ?? []).some((identifier) =>
+    (identifier.match(/[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+/g) ?? []).some((word) => SENSITIVE_ARGUMENT_WORDS.has(word.toLowerCase())));
+}
 
 const rules = [
   {
@@ -83,7 +106,8 @@ const rules = [
     id: 'CRIT-303',
     family: 'Error handling and logging',
     description: 'Possible logging of request or sensitive data',
-    pattern: /\b(?:console\.(?:log|info|debug)|logging\.(?:debug|info|warning|warn|error|exception|critical)|(?:logger|log)\.(?:info|debug|warn|warning|error|exception|critical))\s*\(.*(?:req(?:uest)?\.(?:body|json|data)|password|passwd|token|credit.?card|user(?:Object)?|payload)/i,
+    pattern: /\b(?:console\.(?:log|info|debug)|logging\.(?:debug|info|warning|warn|error|exception|critical)|(?:logger|log)\.(?:info|debug|warn|warning|error|exception|critical))\s*\(/,
+    check: (text) => loggedArgumentsAreSensitive(text),
   },
   {
     id: 'CRIT-104',
@@ -213,6 +237,29 @@ function addCandidate(candidate) {
   candidates.push(candidate);
 }
 
+const CONFIG_FILE_PATTERN = /\.(?:tf|tfvars|hcl|ya?ml|json|toml|ini|cfg|conf|properties|bicep|sql|env|xml|config)$/i;
+
+/** When the file cannot be read, rebuild statements from the runs of consecutive added lines in the diff. */
+function statementsFromDiff(file, language) {
+  const added = (file.changes ?? []).filter((change) => change.side === 'added').sort((a, b) => a.line - b.line);
+  const result = [];
+  let block = [];
+  const flushBlock = () => {
+    if (block.length === 0) return;
+    const offset = block[0].line - 1;
+    for (const statement of logicalStatements(block.map((change) => change.text), language)) {
+      result.push({ ...statement, firstLine: statement.firstLine + offset, lastLine: statement.lastLine + offset });
+    }
+    block = [];
+  };
+  for (const change of added) {
+    if (block.length && change.line !== block.at(-1).line + 1) flushBlock();
+    block.push(change);
+  }
+  flushBlock();
+  return result;
+}
+
 function readSourceLines(file) {
   try {
     return readFileSync(file.path, 'utf8').split(/\r?\n/);
@@ -336,8 +383,9 @@ for (const file of report.files) {
   scannedFiles.push(file);
   if (isReadOnlyPath(file.path)) readOnlyFiles.push(file.path);
   const language = languageForPath(file.path);
-  const sourceLines = language ? readSourceLines(file) : undefined;
-  const statements = sourceLines ? logicalStatements(sourceLines, language) : [];
+  const sourceLines = language || CONFIG_FILE_PATTERN.test(file.path) ? readSourceLines(file) : undefined;
+  const statements = !language ? [] : (sourceLines ? logicalStatements(sourceLines, language) : statementsFromDiff(file, language));
+  const promptFile = isPromptFile(file.path) || dataAndLlm.isPromptByContent({ file, sourceLines });
   const pythonSqlFstrings = findPythonSqlFstringLines(file, sourceLines);
   const csharpSqlLines = new Set(findCSharpSqlLines(file, sourceLines));
   const pythonSqlFstringLines = new Set(pythonSqlFstrings.flatMap((string) =>
@@ -348,13 +396,15 @@ for (const file of report.files) {
   for (const change of file.changes ?? []) {
     if (change.side === 'removed') {
       const match = change.text.match(removedControlPattern);
-      if (!match) continue;
+      const guardrail = promptFile ? dataAndLlm.guardrailRemoval({ change }) : undefined;
+      if (!match && !guardrail) continue;
       addCandidate({
         ruleId: 'REG-401',
         path: file.path,
         line: change.line,
         side: 'removed',
-        description: `Removed line contains security-control term "${match[0]}"; verify it was replaced or intentionally removed`,
+        ...(guardrail ? { severity: 'suspicious' } : {}),
+        description: guardrail ?? `Removed line contains security-control term "${match[0]}"; verify it was replaced or intentionally removed`,
         evidence: '[removed control line omitted from evidence]',
         ...(testFile && config.scan?.testFiles?.mode === 'lower-confidence'
           ? { confidence: 'lower' }
@@ -370,6 +420,7 @@ for (const file of report.files) {
       if (rule.id === 'CRIT-101' && pythonSqlFstringLines.has(change.line)) continue;
       if (rule.id === 'CRIT-106' && isSafeYamlLoad(file, change, sourceLines)) continue;
       if (!rule.pattern.test(change.text)) continue;
+      if (rule.check && !rule.check(change.text)) continue;
       addCandidate({
         ruleId: rule.id,
         path: file.path,
@@ -426,6 +477,15 @@ for (const file of report.files) {
   }
 
   addStatementCandidates(file, language, statements, testFile);
+
+  const llmContext = Boolean(language) && dataAndLlm.llmContext(file, sourceLines);
+  for (const found of dataAndLlm.analyze({ file, language, sourceLines, statements, readOnly: isReadOnlyPath(file.path), llmContext })) {
+    addCandidate({
+      ...found,
+      path: file.path,
+      ...(testFile && config.scan?.testFiles?.mode === 'lower-confidence' ? { confidence: 'lower' } : {}),
+    });
+  }
 }
 
 const FAMILY_ORDER = [
@@ -440,6 +500,9 @@ const FAMILY_ORDER = [
   'Error handling and logging',
   'Removed security controls',
   'Infrastructure and permissions',
+  'Data access',
+  'LLM and agent safety',
+  'Repository hygiene',
 ];
 
 // Rules that are not in the `rules` table: they run on a subset of languages, or compare removed lines.
@@ -448,6 +511,12 @@ const extraRuleFamilies = [
   { id: 'CRIT-104', family: 'Code and command execution', languages: ['python'] },
   { id: 'CRIT-301', family: 'Error handling and logging', languages: ['python'] },
   { id: 'REG-401', family: 'Removed security controls' },
+  { id: 'DATA-501', family: 'Data access', languages: ['python', 'csharp', 'typescript', 'javascript'] },
+  { id: 'DATA-502', family: 'Data access', languages: ['python', 'csharp', 'typescript', 'javascript'] },
+  ...['LLM-501', 'LLM-502', 'LLM-503'].map((id) => ({ id, family: 'LLM and agent safety', languages: ['python', 'csharp', 'typescript', 'javascript'] })),
+  { id: 'LLM-504', family: 'LLM and agent safety', languages: ['python', 'csharp', 'typescript', 'javascript'] },
+  { id: 'HYG-501', family: 'Repository hygiene', languages: ['python'] },
+  { id: 'HYG-502', family: 'Repository hygiene' },
 ];
 
 function rulesForLanguage(language) {
@@ -498,7 +567,7 @@ const readOnlyPaths = {
     ? (readOnlyFiles.length
       ? `${readOnlyFiles.length} changed ${readOnlyFiles.length === 1 ? 'file is' : 'files are'} inside scan.readOnlyPaths.`
       : 'No changed file is inside scan.readOnlyPaths.')
-    : 'scan.readOnlyPaths is empty, so no path is treated as read-only.',
+    : 'scan.readOnlyPaths is empty, so the DATA-501 write check did not run on any path.',
   ...(readOnlyWarning ? { warning: readOnlyWarning } : {}),
 };
 

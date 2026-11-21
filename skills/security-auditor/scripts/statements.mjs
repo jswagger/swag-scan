@@ -29,8 +29,29 @@ export function looksLikeSql(text) {
   return SQL_UPPERCASE.test(text) || SQL_ANY_CASE.test(text);
 }
 
-function buildStatement(tokens, firstLine, lastLine) {
+/** Placeholders inside an interpolated string body: `{name}` (Python f-string, C# $""), or `${name}` (JS template). */
+export function interpolations(body, language) {
+  const pattern = language === 'python' || language === 'csharp' ? /(?<!\{)\{([^{}]+)\}/g : /\$\{([^}]*)\}/g;
+  return [...body.matchAll(pattern)].map((match) => ({ index: match.index, expression: match[1] }));
+}
+
+const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
+
+function buildStatement(tokens, firstLine, lastLine, language) {
   const literals = tokens.filter((token) => token.type === 'string');
+  for (const token of literals) {
+    token.expressions = token.interpolated ? interpolations(token.body, language).map((item) => item.expression) : [];
+  }
+  const references = new Set();
+  for (const token of tokens) {
+    const names = token.type === 'string' ? token.expressions.join(' ') : token.text;
+    for (const name of names.match(IDENTIFIER) ?? []) references.add(name);
+  }
+  const expanded = tokens
+    .map((token) => (token.type === 'string' ? `${STRING_MARK}${token.expressions.map((item) => `(${item})`).join('')}` : token.text))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
   const skeleton = tokens
     .map((token) => (token.type === 'string' ? STRING_MARK : token.text))
     .join('')
@@ -49,6 +70,9 @@ function buildStatement(tokens, firstLine, lastLine) {
     skeleton,
     sql: literals.map((token) => token.body).join(' '),
     dynamic,
+    expanded,
+    references,
+    parts: tokens,
   };
 }
 
@@ -64,6 +88,8 @@ function isInterpolated(language, prefix, quote, body) {
  * @returns {{firstLine:number,lastLine:number,text:string,skeleton:string,sql:string,dynamic:boolean}[]}
  *   `text` has comments removed and adjacent string literals joined. `sql` is every string body, space-separated.
  *   `skeleton` is `text` with each string replaced by a marker. `dynamic` means a string is built with a variable.
+ *   `expanded` is `skeleton` with each interpolated expression kept in brackets after its marker, `references` is every
+ *   identifier outside a plain string, and `parts` is the token list (code and strings, in order).
  */
 export function logicalStatements(sourceLines, language) {
   const source = sourceLines.join('\n');
@@ -86,7 +112,7 @@ export function logicalStatements(sourceLines, language) {
   const flush = (endLine) => {
     pushCode();
     if (tokens.some((token) => token.type === 'string' || /\S/.test(token.text))) {
-      statements.push(buildStatement(tokens, startLine ?? endLine, endLine));
+      statements.push(buildStatement(tokens, startLine ?? endLine, endLine, language));
     }
     tokens = [];
     depth = 0;
