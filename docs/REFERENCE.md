@@ -187,13 +187,35 @@ Auto-fix is on by default for clear, low-risk findings. Dusty findings are never
 
 ## Security Auditor
 
-Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Python, C#, TypeScript and JavaScript files are read in full so a statement written over several lines, or built from several string pieces, is matched as one. `.mjs`, `.cjs`, `.mts` and `.cts` count as JavaScript or TypeScript, and `.cshtml` and `.razor` as C#. The scan coverage lists, for each language, which rule families ran and which have no rules (`coverage.ruleFamilies`), so an empty result is never read as "safe". Coverage is heuristic, not exhaustive. A basic pass reviews common implementation risks (`CRIT-1xx`, `CRIT-2xx`), then an advanced pass looks at attack paths and architecture.
+Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Python, C#, TypeScript and JavaScript files are read in full so a statement written over several lines, or built from several string pieces, is matched as one. `.mjs`, `.cjs`, `.mts` and `.cts` count as JavaScript or TypeScript, and `.cshtml` and `.razor` as C#. The scan coverage lists, for each language, which rule families ran and which have no rules (`coverage.ruleFamilies`), so an empty result is never read as "safe". Coverage is heuristic, not exhaustive.
+
+New in 0.4.0, all heuristics for code that talks to a database or a model:
+
+| Rule | Looks for | Reported as |
+| --- | --- | --- |
+| `DATA-501` | Database writes inside `scan.readOnlyPaths` | High Risk |
+| `DATA-502` | `...Guid IN %s` with no user or tenant predicate | Suspicious, lower confidence |
+| `ARCH-403` | Config that gives an analysis service database write access | Suspicious |
+| `LLM-501` | Model output flowing into SQL, a process, `eval`, a path, an S3 key, a URL or PDF generation | High Risk |
+| `LLM-502` | `toolConfig`, `tools`, function calling or agent setup, with the tools it exposes | Suspicious |
+| `LLM-503` | Document or user text in the system message, or before the instructions with no delimiter | Suspicious |
+| `LLM-504` | `exec` / `spawn` / `subprocess` / `Process.Start` inside an MCP or LLM tool handler | Suspicious |
+| `REG-401` | In prompt files, removed lines with "never", "do not" or "only" | Suspicious |
+| `HYG-501` | A `main_*.py` entry point in a deployable folder that bypasses authentication | Suspicious |
+| `HYG-502` | A personal absolute path (a user home folder) in committed config | Suspicious |
+
+`node skills/security-auditor/scripts/scan-patterns.mjs --config <file>` reads a different config, in the same shape as `config.json`. A basic pass reviews common implementation risks (`CRIT-1xx`, `CRIT-2xx`), then an advanced pass looks at attack paths and architecture.
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
 | `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
 | `scan.projectStack` | `backend`, `frontend`, `full-stack`, or `unknown` | `backend` |
-| `scan.readOnlyPaths` | Globs for code that must only read data, such as `["src/analyze/**"]`. The scanner reads the list and reports which changed files match; the database-write rules that use it arrive in the next release. Empty means no path is treated as read-only. | `[]` |
+| `scan.readOnlyPaths` | Globs for code that must only read data, such as `["src/analyze/**"]`. Inside these paths `DATA-501` treats any database write as High Risk. The scan coverage lists which changed files match. Empty means the write check does not run. | `[]` |
+| `scan.dataAccess.sqlHelpers` / `sqlHelperWriteMethods` | Names of your SQL helper objects (`sql_helper`, `SqlHelper`) and the method names on them that write (`insert`, `execute_non_query`, ...). A method that starts with one of these names counts. | see config |
+| `scan.dataAccess.allowedProcedures` | Stored procedures that `EXEC` / `CALL` may run in a read-only path, such as `dbo.sp_report` | `[]` |
+| `scan.dataAccess.tenantPredicates` | Column names that scope a query to a user or tenant; `DATA-502` stays quiet when one is present | `UserGuid`, `TenantGuid`, `TenantId`, ... |
+| `scan.llm.modelCallWrappers` | Functions and methods that call a model (`_converse_sync`, `messages.create`, `ConverseAsync`, ...); their results are treated as untrusted model output | common Bedrock, Anthropic, OpenAI and Gemini names |
+| `scan.llm.promptFilePatterns` | File-name globs for files that hold prompts or guardrail text. A file with a prompt constant (`SUMMARY_PROMPT = ...`) is also recognised. | `*prompt*`, `*guardrail*`, `*system_message*`, `*instructions*` |
 | `scope.maxRelatedFiles` / `maxRelationshipHops` | How far review follows related code | `5` / `1` |
 
 ## Model roles
