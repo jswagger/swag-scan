@@ -2,6 +2,15 @@
 
 Swag Scan follows [semantic versioning](https://semver.org). It is in beta, so it stays below 1.0.0: a new feature or a change that renames or removes something raises the minor number (0.1.0 to 0.2.0), and a fix, docs or chore change raises the patch number (0.1.0 to 0.1.1). The version lives in `.claude-plugin/plugin.json`, and every pull request raises it and adds an entry here, newest first.
 
+## 0.6.0 - SS-104 (part 2: TypeScript, JavaScript and Python rules)
+
+The Security Auditor now checks much more of what a TypeScript, JavaScript or Python web change can get wrong. Supply chain, CI and secrets rules follow in a later release.
+
+- **TypeScript and JavaScript (`TS-601` to `TS-610`).** TLS verification off, `innerHTML` and other HTML sinks, `new Function` and string timers, JWT checks switched off, insecure cookies and wide-open CORS, file paths and URLs built from request input, weak hashes and `createCipher`, prototype pollution and mass assignment, and NoSQL injection.
+- **Python (`PY-601` to `PY-611`).** `eval`, `shell=True` and `os.system` with built values, SQL built by formatting, template injection, debug mode, path traversal and SSRF, `assert` used for authorization and JWT or CSRF checks switched off, mass assignment, `yaml.load` and `pickle`, weak hashing and randomness, and TLS verification off.
+- **Calls over several lines.** These rules read a call as a whole, so an argument on its own line is still checked.
+- **Model-pass checklists.** The Security Auditor instructions now include a TypeScript checklist and a longer Python checklist for the cases the scanner cannot see.
+
 ## 0.5.0 - SS-104 (part 1: C# rules)
 
 The Security Auditor now checks much more of what a C# web change can get wrong. The TypeScript, Python, supply chain and secrets rules follow in later releases.

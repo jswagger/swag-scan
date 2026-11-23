@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { renderCoverageLine, summarizeCoverage } from '../../review-tools-common/coverage.mjs';
 import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
 import { createCSharpRules } from './csharp-rules.mjs';
+import { createTypeScriptRules } from './typescript-rules.mjs';
+import { createPythonRules } from './python-rules.mjs';
 import { createDataAndLlmRules } from './data-and-llm-rules.mjs';
 import { logicalStatements, looksLikeSql } from './statements.mjs';
 
@@ -16,6 +18,8 @@ const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const { isExcluded, isTestFile, isReadOnlyPath, isPromptFile } = createFileFilters(config.scan);
 const dataAndLlm = createDataAndLlmRules(config.scan);
 const csharpRules = createCSharpRules(config.scan);
+const typescriptRules = createTypeScriptRules();
+const pythonRules = createPythonRules();
 
 function languageForPath(path) {
   if (/\.py$/i.test(path)) return 'python';
@@ -482,12 +486,14 @@ for (const file of report.files) {
 
   addStatementCandidates(file, language, statements, testFile);
 
-  for (const found of csharpRules.analyze({ file, language, sourceLines })) {
-    addCandidate({
-      ...found,
-      path: file.path,
-      ...(testFile && config.scan?.testFiles?.mode === 'lower-confidence' ? { confidence: 'lower' } : {}),
-    });
+  for (const rules of [csharpRules, typescriptRules, pythonRules]) {
+    for (const found of rules.analyze({ file, language, sourceLines })) {
+      addCandidate({
+        ...found,
+        path: file.path,
+        ...(testFile && config.scan?.testFiles?.mode === 'lower-confidence' ? { confidence: 'lower' } : {}),
+      });
+    }
   }
 
   const llmContext = Boolean(language) && dataAndLlm.llmContext(file, sourceLines);
@@ -537,6 +543,27 @@ const extraRuleFamilies = [
   { id: 'CS-608', family: 'Injection (SQL, command, HTML)', languages: ['csharp'] },
   { id: 'CS-609', family: 'Cryptography and randomness', languages: ['csharp'] },
   { id: 'CS-610', family: 'Authorization', languages: ['csharp'] },
+  { id: 'TS-601', family: 'TLS verification', languages: ['typescript', 'javascript'] },
+  { id: 'TS-602', family: 'Injection (SQL, command, HTML)', languages: ['typescript', 'javascript'] },
+  { id: 'TS-603', family: 'Code and command execution', languages: ['typescript', 'javascript'] },
+  { id: 'TS-604', family: 'Authorization', languages: ['typescript', 'javascript'] },
+  { id: 'TS-605', family: 'Authorization', languages: ['typescript', 'javascript'] },
+  { id: 'TS-606', family: 'Input validation', languages: ['typescript', 'javascript'] },
+  { id: 'TS-607', family: 'Input validation', languages: ['typescript', 'javascript'] },
+  { id: 'TS-608', family: 'Cryptography and randomness', languages: ['typescript', 'javascript'] },
+  { id: 'TS-609', family: 'Input validation', languages: ['typescript', 'javascript'] },
+  { id: 'TS-610', family: 'Injection (SQL, command, HTML)', languages: ['typescript', 'javascript'] },
+  { id: 'PY-601', family: 'Code and command execution', languages: ['python'] },
+  { id: 'PY-602', family: 'Injection (SQL, command, HTML)', languages: ['python'] },
+  { id: 'PY-603', family: 'Injection (SQL, command, HTML)', languages: ['python'] },
+  { id: 'PY-604', family: 'Error handling and logging', languages: ['python'] },
+  { id: 'PY-605', family: 'Input validation', languages: ['python'] },
+  { id: 'PY-606', family: 'Authorization', languages: ['python'] },
+  { id: 'PY-607', family: 'Input validation', languages: ['python'] },
+  { id: 'PY-608', family: 'Unsafe deserialization', languages: ['python'] },
+  { id: 'PY-609', family: 'Cryptography and randomness', languages: ['python'] },
+  { id: 'PY-610', family: 'TLS verification', languages: ['python'] },
+  { id: 'PY-611', family: 'Input validation', languages: ['python'] },
   { id: 'HYG-501', family: 'Repository hygiene', languages: ['python'] },
   { id: 'HYG-502', family: 'Repository hygiene' },
 ];

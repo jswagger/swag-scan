@@ -189,6 +189,32 @@ Auto-fix is on by default for clear, low-risk findings. Dusty findings are never
 
 Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Python, C#, TypeScript and JavaScript files are read in full so a statement written over several lines, or built from several string pieces, is matched as one. `.mjs`, `.cjs`, `.mts` and `.cts` count as JavaScript or TypeScript, and `.cshtml` and `.razor` as C#. The scan coverage lists, for each language, which rule families ran and which have no rules (`coverage.ruleFamilies`), so an empty result is never read as "safe". Coverage is heuristic, not exhaustive.
 
+New in 0.6.0, TypeScript, JavaScript and Python rules. Each one is a lead for the model pass to verify, and context-dependent ones are lower confidence. They read a call written over several lines as one call, and rules that need the lines around a change run only when the real file can be read. `v-html` is matched only in JS/TS files because `.vue` files are not scanned.
+
+| Rule | Looks for | Reported as |
+| --- | --- | --- |
+| `TS-601` | `rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED=0`. TLS certificate verification is off; trust the specific CA instead. | High Risk |
+| `TS-602` | `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `dangerouslySetInnerHTML`, `v-html` (in JS/TS files) given anything but a plain literal or sanitized value. Use `textContent` or DOM methods, or sanitize first (DOMPurify). | Suspicious, lower confidence unless request-like input is visible |
+| `TS-603` | `new Function(` or `setTimeout`/`setInterval` with a built string. Same risk as `eval`; pass a function. | High Risk |
+| `TS-604` | `ignoreExpiration: true`, a `none` JWT algorithm, `jwt.decode` read for a role or user id. Use `jwt.verify` with a fixed algorithm list. | High Risk / lower confidence |
+| `TS-605` | Cookie `httpOnly: false` or `secure: false`; CORS any origin with credentials. List trusted origins; set httpOnly and secure. | High Risk / lower confidence |
+| `TS-606` | `fs` calls, `res.sendFile` and `path.join` with request input. Resolve the path and check it stays in the base folder. | Suspicious |
+| `TS-607` | `fetch`, `axios`, `got`, `http.get` with a URL from request input. SSRF: allow only known hosts. | High Risk |
+| `TS-608` | `createCipher`; `createHash` with MD5 or SHA-1. Use `createCipheriv` with AES-GCM and SHA-256 or better. | High Risk / lower confidence |
+| `TS-609` | `__proto__` writes; request data in a deep merge or `Object.assign`. Prototype pollution and mass assignment: copy only expected fields. | High Risk / lower confidence |
+| `TS-610` | `$where`; a Mongo query built from `req.body`/`req.query` or an unchecked field. NoSQL injection: pick fields and check types. | High Risk / lower confidence |
+| `PY-601` | `eval`/`exec`, `subprocess` with `shell=True`, `os.system`/`os.popen` given anything but a plain string. Command and code injection; pass a list, use `ast.literal_eval`. | High Risk / lower confidence |
+| `PY-602` | `execute`, `executemany`, `executescript`, `raw`, `read_sql` or `text(` with an f-string, `%`, `.format` or `+` query. SQL injection; use parameters. | High Risk |
+| `PY-603` | `render_template_string`/`Template` built from a value, `mark_safe`, `Markup`, `|safe`, `autoescape=False`. Template and HTML injection. | High Risk / lower confidence |
+| `PY-604` | `debug=True`, `DEBUG = True`, `app.run(debug=True)`, a traceback or exception text returned to the client. Debug mode and error leaks. | High Risk / lower confidence |
+| `PY-605` | `open`, `send_file`, `os.path.join`, `shutil` and `Path` with request input; `requests`/`httpx`/`urlopen` with a URL from request input. Path traversal and SSRF. | High Risk / lower confidence |
+| `PY-606` | `assert` used for authorization, JWT verification off, `jwt.decode` with no `algorithms`, `@csrf_exempt`, CORS any origin with credentials, insecure session cookies. Weak access control. | High Risk / lower confidence |
+| `PY-607` | `Model(**request.json)`, serializer `fields = "__all__"`, `tarfile.extractall` with no filter, uploaded zips extracted. Mass assignment and archive path traversal. | Suspicious, lower confidence |
+| `PY-608` | `yaml.load` without a safe loader, `pickle`/`dill`/`marshal`/`shelve`/`torch.load` loading. Unsafe deserialization. | High Risk / lower confidence |
+| `PY-609` | `hashlib.md5`/`sha1`, `random` for tokens or passwords, `MODE_ECB`, a literal `SECRET_KEY`. Weak cryptography and randomness. | High Risk / lower confidence |
+| `PY-610` | `verify=False`, `_create_unverified_context`, `ssl.CERT_NONE`, `check_hostname = False`. TLS verification is off. | High Risk |
+| `PY-611` | A `file://` URL fetched with request input nearby. Restrict fetches to http and https. | Suspicious, lower confidence |
+
 New in 0.5.0, C# rules. Each one is a lead for the model pass to verify, and context-dependent ones are lower confidence. `CS-609` also reads changed `web.config` files.
 
 | Rule | Looks for | Reported as |
