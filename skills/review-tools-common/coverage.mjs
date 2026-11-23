@@ -19,7 +19,7 @@ const KNOWN_UNSUPPORTED = {
 // Data, documents and images are not source code, so they are never "Unchecked": there is no code in them to miss.
 const NON_CODE = new Set([
   'md', 'markdown', 'txt', 'rst', 'json', 'yaml', 'yml', 'toml', 'xml', 'csv', 'tsv', 'ini', 'cfg', 'conf', 'lock',
-  'svg', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'webp', 'pdf', 'snap', 'map', 'log', 'env', 'gitignore',
+  'svg', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'webp', 'pdf', 'snap', 'map', 'log', 'env', 'config', 'gitignore',
 ]);
 
 export const isNonCode = (path) => NON_CODE.has(path.slice(path.lastIndexOf('/') + 1).split('.').slice(1).pop()?.toLowerCase() ?? '');

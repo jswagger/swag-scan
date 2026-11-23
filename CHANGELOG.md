@@ -2,6 +2,20 @@
 
 Swag Scan follows [semantic versioning](https://semver.org). It is in beta, so it stays below 1.0.0: a new feature or a change that renames or removes something raises the minor number (0.1.0 to 0.2.0), and a fix, docs or chore change raises the patch number (0.1.0 to 0.1.1). The version lives in `.claude-plugin/plugin.json`, and every pull request raises it and adds an entry here, newest first.
 
+## 0.5.0 - SS-104 (part 1: C# rules)
+
+The Security Auditor now checks much more of what a C# web change can get wrong. The TypeScript, Python, supply chain and secrets rules follow in later releases.
+
+- **Entity Framework raw SQL (`CS-601`).** `FromSqlRaw`, `ExecuteSqlRaw` and `SqlQueryRaw` built with interpolation, concatenation or `string.Format` are reported. `FromSqlInterpolated` and parameterised calls are not.
+- **Endpoints with no authorization marker (`CS-610`).** A new `[HttpGet]` / `[HttpPost]` ... action, or a minimal API `MapGet` / `MapPost` ..., with no `[Authorize]`, `[AllowAnonymous]`, `RequireAuthorization` or authorized base class nearby is reported as a lower-confidence lead.
+- **Id lists with no owner check (`DATA-502`).** A LINQ filter such as `.Where(r => guids.Contains(r.ReportGuid))` with no user or tenant predicate is now reported, not only SQL strings. `UserId` and `OwnerId` count as owner predicates.
+- **More C# rules.** `Html.Raw` on data (`CS-602`), XXE (`CS-603`), MD5, SHA-1, DES, RC2 and TripleDES (`CS-604`), token validation switched off (`CS-605`), any origin with credentials in CORS (`CS-606`), `[IgnoreAntiforgeryToken]` (`CS-607`), `Path.Combine` with request input (`CS-608`), and a fixed `machineKey` or `enableViewStateMac="false"` in `web.config` (`CS-609`).
+- **Existing rules widened.** `CRIT-108` also covers `NetDataContractSerializer`, `LosFormatter`, `SoapFormatter` and `ObjectStateFormatter`. `CRIT-109` covers `TypeNameHandling.Auto`, `Objects` and `Arrays`. `CRIT-111` covers `ServerCertificateCustomValidationCallback` and `DangerousAcceptAnyServerCertificateValidator`. `CRIT-301` catches empty and console-only `catch` blocks that span several lines. `ARCH-404` flags a catch in an authentication or authorization handler that carries on.
+- **A C# checklist for the model pass.** The Security Auditor's instructions now list what to check on every new or changed C# endpoint and query, so a scan with 0 leads on a risky endpoint is not read as safe.
+- **The report says how many rules found something.** The coverage line now reads, for example, "C# (7 files): 14 of 14 families, 2 of 37 rules found something".
+- **Fixed:** a C# class that held a string with `{placeholders}` and a SQL word was reported as one lower-confidence "SQL built from pieces" lead on the line where the class starts. C# SQL is now judged line by line only.
+- `web.config` is now counted as data, so it no longer shows up as an unchecked language.
+
 ## 0.4.0 - SS-103 (part 2 of 2)
 
 Security Auditor rules for code that talks to a database or an AI model.

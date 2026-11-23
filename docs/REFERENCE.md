@@ -189,12 +189,31 @@ Auto-fix is on by default for clear, low-risk findings. Dusty findings are never
 
 Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Python, C#, TypeScript and JavaScript files are read in full so a statement written over several lines, or built from several string pieces, is matched as one. `.mjs`, `.cjs`, `.mts` and `.cts` count as JavaScript or TypeScript, and `.cshtml` and `.razor` as C#. The scan coverage lists, for each language, which rule families ran and which have no rules (`coverage.ruleFamilies`), so an empty result is never read as "safe". Coverage is heuristic, not exhaustive.
 
+New in 0.5.0, C# rules. Each one is a lead for the model pass to verify, and context-dependent ones are lower confidence. `CS-609` also reads changed `web.config` files.
+
+| Rule | Looks for | Reported as |
+| --- | --- | --- |
+| `CS-601` | `FromSqlRaw`, `ExecuteSqlRaw(Async)`, `SqlQueryRaw` built with interpolation, concatenation or `string.Format` | High Risk |
+| `CS-602` | `Html.Raw(` on anything but a plain literal | Suspicious, lower confidence |
+| `CS-603` | `DtdProcessing.Parse`, `XmlResolver = new XmlUrlResolver()` (XXE) | High Risk |
+| `CS-604` | `DES`, `RC2`, `TripleDES`; `MD5` and `SHA1` (lower confidence) | High Risk / lower confidence |
+| `CS-605` | `ValidateIssuer`, `ValidateAudience`, `ValidateLifetime`, `ValidateIssuerSigningKey`, `RequireSignedTokens` or `RequireHttpsMetadata` set to `false` | High Risk |
+| `CS-606` | `AllowAnyOrigin()` or `SetIsOriginAllowed(_ => true)` with `AllowCredentials()` in one policy | High Risk |
+| `CS-607` | `[IgnoreAntiforgeryToken]` | Suspicious, lower confidence |
+| `CS-608` | `Path.Combine` / `Path.Join` with request input | Suspicious, lower confidence |
+| `CS-609` | A fixed `machineKey`, or `enableViewStateMac="false"`, in `web.config` (the key is never printed) | High Risk |
+| `CS-610` | A new `[Http*]` action or `MapGet`/`MapPost`/... endpoint with no `[Authorize]`, `[AllowAnonymous]`, `RequireAuthorization` or authorized base class nearby | Suspicious, lower confidence |
+
+The existing rules also grew for C#: `CRIT-108` now covers `NetDataContractSerializer`, `LosFormatter`, `SoapFormatter` and `ObjectStateFormatter`; `CRIT-109` covers `TypeNameHandling.Auto`, `Objects` and `Arrays`; `CRIT-111` covers `ServerCertificateCustomValidationCallback` and `DangerousAcceptAnyServerCertificateValidator`; `CRIT-301` catches empty and console-only `catch` blocks over several lines; `ARCH-404` flags a catch in an auth handler that carries on; and `DATA-502` also matches LINQ filters such as `.Where(r => guids.Contains(r.ReportGuid))`.
+
+The scan coverage now says how many rules each language ran and how many found something (`Rule families that ran: C# (7 files): 14 of 14 families, 2 of 37 rules found something`), so a result with few hits from a large rule set is not read as clean.
+
 New in 0.4.0, all heuristics for code that talks to a database or a model:
 
 | Rule | Looks for | Reported as |
 | --- | --- | --- |
 | `DATA-501` | Database writes inside `scan.readOnlyPaths` | High Risk |
-| `DATA-502` | `...Guid IN %s` with no user or tenant predicate | Suspicious, lower confidence |
+| `DATA-502` | `...Guid IN %s` (or, in C#, `ids.Contains(x.Guid)`) with no user or tenant predicate | Suspicious, lower confidence |
 | `ARCH-403` | Config that gives an analysis service database write access | Suspicious |
 | `LLM-501` | Model output flowing into SQL, a process, `eval`, a path, an S3 key, a URL or PDF generation | High Risk |
 | `LLM-502` | `toolConfig`, `tools`, function calling or agent setup, with the tools it exposes | Suspicious |
@@ -213,7 +232,7 @@ New in 0.4.0, all heuristics for code that talks to a database or a model:
 | `scan.readOnlyPaths` | Globs for code that must only read data, such as `["src/analyze/**"]`. Inside these paths `DATA-501` treats any database write as High Risk. The scan coverage lists which changed files match. Empty means the write check does not run. | `[]` |
 | `scan.dataAccess.sqlHelpers` / `sqlHelperWriteMethods` | Names of your SQL helper objects (`sql_helper`, `SqlHelper`) and the method names on them that write (`insert`, `execute_non_query`, ...). A method that starts with one of these names counts. | see config |
 | `scan.dataAccess.allowedProcedures` | Stored procedures that `EXEC` / `CALL` may run in a read-only path, such as `dbo.sp_report` | `[]` |
-| `scan.dataAccess.tenantPredicates` | Column names that scope a query to a user or tenant; `DATA-502` stays quiet when one is present | `UserGuid`, `TenantGuid`, `TenantId`, ... |
+| `scan.dataAccess.tenantPredicates` | Column names that scope a query to a user or tenant; `DATA-502` stays quiet when one is present | `UserGuid`, `UserId`, `OwnerId`, `TenantGuid`, `TenantId`, ... |
 | `scan.llm.modelCallWrappers` | Functions and methods that call a model (`_converse_sync`, `messages.create`, `ConverseAsync`, ...); their results are treated as untrusted model output | common Bedrock, Anthropic, OpenAI and Gemini names |
 | `scan.llm.promptFilePatterns` | File-name globs for files that hold prompts or guardrail text. A file with a prompt constant (`SUMMARY_PROMPT = ...`) is also recognised. | `*prompt*`, `*guardrail*`, `*system_message*`, `*instructions*` |
 | `scope.maxRelatedFiles` / `maxRelationshipHops` | How far review follows related code | `5` / `1` |
