@@ -189,6 +189,25 @@ Auto-fix is on by default for clear, low-risk findings. Dusty findings are never
 
 Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Python, C#, TypeScript and JavaScript files are read in full so a statement written over several lines, or built from several string pieces, is matched as one. `.mjs`, `.cjs`, `.mts` and `.cts` count as JavaScript or TypeScript, and `.cshtml` and `.razor` as C#. The scan coverage lists, for each language, which rule families ran and which have no rules (`coverage.ruleFamilies`), so an empty result is never read as "safe". Coverage is heuristic, not exhaustive.
 
+New in 0.7.0, supply chain, secrets, access control and error handling. `SUP` rules and the `SEC` rules run on changed files of any language; `ACC` and `ERR` rules need the real file and cover TypeScript, JavaScript and Python (C# already has `CS-610`, `CRIT-301` and `ARCH-404`). `PY-601`, `PY-602`, `PY-604`, `PY-607`, `PY-608` and `PY-609` also gained Python cases (`asyncio.create_subprocess_shell`, Django `.extra` and `RawSQL`, `ALLOWED_HOSTS = ['*']`, zip slip, `torch.load` without `weights_only=True`, `tempfile.mktemp`). The coverage line now counts 15 rule families, with "Supply chain and CI/CD" the new one.
+
+| Rule | Looks for | Reported as |
+| --- | --- | --- |
+| `SUP-601` | A `pull_request_target` workflow that checks out the pull request head | High Risk |
+| `SUP-602` | Text an outsider controls (`github.event` title, body, branch name, comment; `inputs.*`) inside a `run:` step | High Risk |
+| `SUP-603` | A `uses:` action not pinned to a 40-character commit SHA | Suspicious, lower confidence |
+| `SUP-604` | `permissions: write-all` | High Risk |
+| `SUP-605` | A new `preinstall`, `install` or `postinstall` script in `package.json` | High Risk |
+| `SUP-606` | A new dependency in `package.json`, `requirements*.txt`, `pyproject.toml` or a `.csproj` `PackageReference` (no advisory check: there is no network access) | Suspicious, lower confidence |
+| `SUP-607` | A new `.pth` file, or `setup.py` code that runs `exec`, `subprocess` or a network call | High Risk |
+| `SEC-601` | A well-known provider key (Anthropic, OpenAI, GitHub, AWS, Slack, Stripe, Hugging Face, Google) or a private key block; the value is redacted in the report | High Risk (Stripe test keys: lower confidence) |
+| `SEC-602` | A literal secret value in a committed `.env` file (`.env.example` and similar templates are ignored) | High Risk |
+| `SEC-603` | A literal credential or bearer token in an MCP config file such as `.mcp.json` | High Risk |
+| `ACC-601` | A new Express, Fastify, NestJS, FastAPI, Flask or Django REST route with no authentication marker nearby (TypeScript, JavaScript, Python) | Suspicious, lower confidence |
+| `ERR-601` | `.catch(() => {})`, a `catch` that is empty or only logs, bare `except:`, `except Exception` that carries on without logging | Suspicious, lower confidence |
+| `ERR-602` | An auth handler that lets the request through when its check fails (`next()`, `return true`, `call_next` in a `catch` or `except`) | Suspicious, lower confidence |
+| `PY-612` | An XML parser set to resolve entities or load external content (XXE) | High Risk |
+
 New in 0.6.0, TypeScript, JavaScript and Python rules. Each one is a lead for the model pass to verify, and context-dependent ones are lower confidence. They read a call written over several lines as one call, and rules that need the lines around a change run only when the real file can be read. `v-html` is matched only in JS/TS files because `.vue` files are not scanned.
 
 | Rule | Looks for | Reported as |

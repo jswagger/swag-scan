@@ -282,7 +282,7 @@ test('coverage says how many rules found something, so 0 leads is not read as cl
   assert.equal(csharp.rules.matched, 0);
   assert.equal(csharp.rules.ran >= 20, true);
   assert.equal(csharp.rules.matchedNothing, csharp.rules.ran);
-  assert.match(quiet.coverage.ruleFamiliesLine, /C# \(1 file\): 14 of 14 families, 0 of \d+ rules found something/);
+  assert.match(quiet.coverage.ruleFamiliesLine, /C# \(1 file\): 15 of 15 families, 0 of \d+ rules found something/);
 
   const noisy = scanFile(context, 'Noisy.cs', ['var md5 = MD5.Create();', 'var f = new BinaryFormatter();']);
   const counts = noisy.coverage.ruleFamilies.find((entry) => entry.language === 'csharp').rules;

@@ -195,7 +195,7 @@ test('coverage states which rule families ran for each detected language', () =>
   assert.equal(byLanguage.typescript.notCovered.includes('TLS verification'), false);
   assert.deepEqual(byLanguage.python.notCovered, []);
   assert.equal(byLanguage.other.files, 1);
-  assert.match(report.coverage.ruleFamiliesLine, /TypeScript \(1 file\): 13 of 14 families, no rules for Unsafe deserialization/);
+  assert.match(report.coverage.ruleFamiliesLine, /TypeScript \(1 file\): 14 of 15 families, no rules for Unsafe deserialization/);
   assert.match(report.coverage.ruleFamiliesLine, /No candidates does not mean safe\./);
 
   const families = byLanguage.python.ran.map((item) => item.family);

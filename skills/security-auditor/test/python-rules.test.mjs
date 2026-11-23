@@ -102,3 +102,20 @@ test('PY-610 flags TLS verification off and ignores the safe forms', (context) =
   for (const lines of harmless) assert.equal(flagged(context, 'PY-610', lines), false, lines.join(' '));
 });
 
+test('PY-601 to PY-612 also cover asyncio shells, Django extra/RawSQL, ALLOWED_HOSTS, XXE, mktemp, zip slip and torch.load', (context) => {
+  const cases = [
+    ['PY-601', ["proc = await asyncio.create_subprocess_shell(f'ls {name}')"], ["proc = await asyncio.create_subprocess_exec('ls', name)"]],
+    ['PY-602', ["qs = Report.objects.extra(where=['name = %s' % name])"], ["qs = Report.objects.extra(where=['active = 1'])"]],
+    ['PY-602', ["total = RawSQL(f'SELECT {col} FROM t', [])"], ["total = RawSQL('SELECT 1', [])"]],
+    ['PY-604', ["ALLOWED_HOSTS = ['*']"], ["ALLOWED_HOSTS = ['app.example.com']"]],
+    ['PY-612', ["parser = etree.XMLParser(resolve_entities=True)"], ["parser = etree.XMLParser(resolve_entities=False)"]],
+    ['PY-609', ["path = tempfile.mktemp()"], ["fd, path = tempfile.mkstemp()"]],
+    ['PY-607', ["with zipfile.ZipFile(upload) as archive:", "    archive.extractall(target)"], ["with zipfile.ZipFile(upload) as archive:", "    for member in archive.namelist():", "        assert os.path.commonpath([target, os.path.join(target, member)]) == target", "    archive.extractall(target)"]],
+    ['PY-608', ["model = torch.load(path)"], ["model = torch.load(path, weights_only=True)"]],
+    ['PY-608', ["state = marshal.loads(blob)", "db = shelve.open(path)", "obj = jsonpickle.decode(text)"], ["state = json.loads(blob)"]],
+  ];
+  for (const [rule, risky, harmless] of cases) {
+    assert.equal(flagged(context, rule, risky), true, `${rule}: ${risky.join(' ')}`);
+    assert.equal(flagged(context, rule, harmless), false, `${rule}: ${harmless.join(' ')}`);
+  }
+});

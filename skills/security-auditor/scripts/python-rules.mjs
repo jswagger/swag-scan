@@ -13,9 +13,10 @@ const REQUEST_INPUT = /\brequest\s*\.\s*(?:args|form|values|json|data|files|cook
 const EVAL_CALL = /(?<![\w.])(?:eval|exec)\s*\(/;
 const SHELL_TRUE = /\bshell\s*=\s*True\b/;
 const SUBPROCESS_CALL = /\bsubprocess\s*\.\s*(?:run|call|check_call|check_output|Popen)\s*\(/;
-const OS_SHELL = /\bos\s*\.\s*(?:system|popen)\s*\(/;
+const OS_SHELL = /\bos\s*\.\s*(?:system|popen)\s*\(|\b(?:asyncio\s*\.\s*)?create_subprocess_shell\s*\(/;
 const SQL_EXECUTE = /\.\s*(?:execute|executemany|executescript|raw|read_sql(?:_query)?)\s*\(/;
 const SQL_WORDS = /\b(?:select|insert|update|delete|drop|create|alter|union|where|from)\b/i;
+const DJANGO_RAW = /\.\s*extra\s*\(|(?<![\w.])RawSQL\s*\(/;
 const TEXT_SQL = /(?<![\w.])text\s*\(/;
 const TEMPLATE_STRING = /\brender_template_string\s*\(|\bTemplate\s*\(/;
 const MARK_SAFE = /(?<![\w.])(?:mark_safe|Markup)\s*\(|\|\s*safe\b/;
@@ -89,11 +90,11 @@ export function createPythonRules() {
       }
 
       // PY-602: SQL built by string formatting.
-      for (const pattern of [SQL_EXECUTE, TEXT_SQL]) {
+      for (const pattern of [SQL_EXECUTE, TEXT_SQL, DJANGO_RAW]) {
         for (const { args, raw } of callsOn(lines, index, code, pattern, LANGUAGE)) {
           const query = args[0] ?? '';
           if (/"I"/.test(query) || (/"S"/.test(query) && /["S]\s*(?:\+|%)|\.format\b|\+\s*[\w(]/.test(query))) {
-            if (SQL_WORDS.test(raw[0] ?? '') || /"I"/.test(query)) {
+            if (SQL_WORDS.test(raw[0] ?? '') || /"I"/.test(query) || pattern === DJANGO_RAW) {
               report('PY-602', change, 'A SQL query is built by formatting or joining text into it (f-string, %, .format or +); pass values as parameters instead so they cannot change the query');
             }
           }
@@ -119,6 +120,9 @@ export function createPythonRules() {
       // PY-604: debug mode and tracebacks sent to the client.
       if (DEBUG_ON.test(code)) {
         report('PY-604', change, 'Debug mode is on; Flask and Django then show stack traces and, in Flask, an interactive console to anyone who can reach the app. Turn it off outside local development', LOWER);
+      }
+      if (/^\s*ALLOWED_HOSTS\s*=\s*\[[^\]]*['"]\*['"]/.test(code)) {
+        report('PY-604', change, "ALLOWED_HOSTS contains '*', which turns off Django's Host header check and allows host header poisoning (password reset links, cache poisoning); list the real host names");
       }
       for (const { raw } of callsOn(lines, index, code, RUN_CALL, LANGUAGE)) {
         if (raw.some((argument) => /\bdebug\s*=\s*True\b/.test(argument))) {
@@ -182,8 +186,11 @@ export function createPythonRules() {
       if (hasSource && TAR_OPEN.test(windowText(lines, Math.max(0, index - 6), index, LANGUAGE)) && TARFILE_EXTRACT.test(code) && !/\bfilter\s*=/.test(code)) {
         report('PY-607', change, 'tarfile extraction without a filter lets archive entries write outside the target folder ("../" or links); pass filter="data" or check every member path', LOWER);
       }
-      if (ZIPFILE_EXTRACT.test(code) && /\bzip/i.test(windowText(lines, Math.max(0, index - 6), index, LANGUAGE)) && REQUEST_INPUT.test(windowText(lines, Math.max(0, index - 6), index, LANGUAGE))) {
-        report('PY-607', change, 'An uploaded zip is extracted without checking member names; "../" entries can write outside the target folder', LOWER);
+      if (ZIPFILE_EXTRACT.test(code) && hasSource) {
+        const before = windowText(lines, Math.max(0, index - 8), index + 4, LANGUAGE);
+        if (/\bzip/i.test(before) && !/\b(?:commonpath|realpath|is_relative_to|startswith|safe_extract|abspath|filter\s*=)\b/.test(before)) {
+          report('PY-607', change, 'A zip is extracted with extractall and no path check nearby; entries named "../x" or with absolute paths can write outside the target folder (zip slip). Check each member path stays inside the folder', REQUEST_INPUT.test(before) ? {} : LOWER);
+        }
       }
 
       // PY-608: unsafe deserialization.
@@ -195,6 +202,7 @@ export function createPythonRules() {
         }
       }
       for (const { raw } of callsOn(lines, index, code, PICKLE_LOAD, LANGUAGE)) {
+        if (/\btorch\s*\.\s*load\b/.test(code) && raw.some((argument) => /\bweights_only\s*=\s*True\b/.test(argument))) continue;
         const lower = !REQUEST_INPUT.test(raw.join(', '));
         report('PY-608', change, 'pickle-style loading runs code embedded in the data; never load data that came from a user, a network or a shared location. Use JSON or a signed format', lower ? LOWER : {});
       }
@@ -211,6 +219,9 @@ export function createPythonRules() {
           report('PY-609', change, `${match[0].replace(/\s*\($/, '')} is predictable; for tokens, passwords, codes and session ids use the secrets module`, LOWER);
         }
       }
+      if (/\btempfile\s*\.\s*mktemp\s*\(/.test(code)) {
+        report('PY-609', change, 'tempfile.mktemp returns a name without creating the file, so another process can create it first (race and symlink attacks); use mkstemp, NamedTemporaryFile or TemporaryDirectory');
+      }
       if (ECB_MODE.test(code)) {
         report('PY-609', change, 'ECB mode encrypts equal blocks to equal output and leaks patterns; use AES-GCM');
       }
@@ -221,6 +232,11 @@ export function createPythonRules() {
       // PY-610: TLS verification off.
       if (VERIFY_OFF.test(code)) {
         report('PY-610', change, 'TLS certificate verification is turned off (verify=False, CERT_NONE or an unverified context); the connection can be intercepted. Trust the specific CA bundle instead');
+      }
+
+      // PY-612: XML parsers that resolve entities or load external content (XXE).
+      if (/\bresolve_entities\s*=\s*True\b|\bload_dtd\s*=\s*True\b|\bno_network\s*=\s*False\b|\bfeature_external_ges\b[^\n]*\bTrue\b|\bsetFeature\s*\([^)]*feature_external_(?:ges|pes)[^)]*,\s*True\b/.test(code)) {
+        report('PY-612', change, 'The XML parser is set to resolve entities or load external content, so a crafted file can read local files or make the server fetch URLs (XXE); turn these off or use defusedxml');
       }
 
       // PY-611: unsafe URL schemes.
