@@ -35,7 +35,21 @@
       ]
     },
     "projectStack": "backend",
-    "readOnlyPaths": []
+    "readOnlyPaths": [],
+    "dataAccess": {
+      "sqlHelpers": ["sql_helper", "SqlHelper", "db_helper", "DbHelper"],
+      "sqlHelperWriteMethods": ["execute_non_query", "executenonquery", "insert", "update", "delete", "upsert", "merge", "bulk", "write", "commit", "executemany"],
+      "allowedProcedures": [],
+      "tenantPredicates": ["UserGuid", "TenantGuid", "TenantId", "OrgId", "OrganizationId", "AccountId"]
+    },
+    "llm": {
+      "modelCallWrappers": [
+        "_converse_sync", "converse", "converse_stream", "invoke_model", "invoke_model_with_response_stream",
+        "ConverseAsync", "InvokeModelAsync", "messages.create", "messages.stream", "chat.completions.create",
+        "responses.create", "completions.create", "generate_content", "generateContent", "chat.send"
+      ],
+      "promptFilePatterns": ["*prompt*", "*guardrail*", "*system_message*", "*instructions*"]
+    }
   },
   "scope": {
     "maxRelatedFiles": 5,
