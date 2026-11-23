@@ -2,6 +2,17 @@
 
 Swag Scan follows [semantic versioning](https://semver.org). It is in beta, so it stays below 1.0.0: a new feature or a change that renames or removes something raises the minor number (0.1.0 to 0.2.0), and a fix, docs or chore change raises the patch number (0.1.0 to 0.1.1). The version lives in `.claude-plugin/plugin.json`, and every pull request raises it and adds an entry here, newest first.
 
+## 0.7.0 - SS-104 (part 3: supply chain, secrets, access control, error handling)
+
+The Security Auditor now looks beyond application code: build files, dependencies, committed secrets and the way errors are handled.
+
+- **Supply chain and CI/CD (`SUP-601` to `SUP-607`).** `pull_request_target` workflows that check out the pull request, untrusted event text inside `run:` steps, actions not pinned to a commit, `permissions: write-all`, new install-time scripts, new dependencies in `package.json`, `requirements*.txt`, `pyproject.toml` and `.csproj` files (as "review this" leads), and `.pth` files or `setup.py` code that runs at install time. Swag Scan cannot check dependencies against advisories because it makes no network calls.
+- **Secrets (`SEC-601` to `SEC-603`).** Well-known provider keys (Anthropic, OpenAI, GitHub, AWS, Slack, Stripe, Hugging Face, Google, private keys) in any file, literal values in committed `.env` files, and literal credentials in MCP config files. The value is always redacted in the report.
+- **Access control and error handling.** New routes with no authentication marker (`ACC-601`), errors that are caught and thrown away (`ERR-601`), and auth handlers that fail open (`ERR-602`) for TypeScript, JavaScript and Python.
+- **More Python.** XXE parser settings (`PY-612`), `asyncio.create_subprocess_shell`, Django `.extra` and `RawSQL`, `ALLOWED_HOSTS = ['*']`, zip slip, `tempfile.mktemp`, and `torch.load` is quiet when `weights_only=True`.
+- **Coverage.** The rule-family line now counts a fifteenth family, "Supply chain and CI/CD".
+- **Instructions.** The Security Auditor instructions gained supply chain and error-handling checklists and list every new rule ID.
+
 ## 0.6.0 - SS-104 (part 2: TypeScript, JavaScript and Python rules)
 
 The Security Auditor now checks much more of what a TypeScript, JavaScript or Python web change can get wrong. Supply chain, CI and secrets rules follow in a later release.

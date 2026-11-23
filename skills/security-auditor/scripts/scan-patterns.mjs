@@ -6,6 +6,9 @@ import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
 import { createCSharpRules } from './csharp-rules.mjs';
 import { createTypeScriptRules } from './typescript-rules.mjs';
 import { createPythonRules } from './python-rules.mjs';
+import { createSupplyChainRules } from './supply-chain-rules.mjs';
+import { createSecretsRules } from './secrets-rules.mjs';
+import { createAccessAndErrorRules } from './access-and-error-rules.mjs';
 import { createDataAndLlmRules } from './data-and-llm-rules.mjs';
 import { logicalStatements, looksLikeSql } from './statements.mjs';
 
@@ -20,6 +23,9 @@ const dataAndLlm = createDataAndLlmRules(config.scan);
 const csharpRules = createCSharpRules(config.scan);
 const typescriptRules = createTypeScriptRules();
 const pythonRules = createPythonRules();
+const supplyChainRules = createSupplyChainRules();
+const secretsRules = createSecretsRules();
+const accessAndErrorRules = createAccessAndErrorRules();
 
 function languageForPath(path) {
   if (/\.py$/i.test(path)) return 'python';
@@ -486,7 +492,7 @@ for (const file of report.files) {
 
   addStatementCandidates(file, language, statements, testFile);
 
-  for (const rules of [csharpRules, typescriptRules, pythonRules]) {
+  for (const rules of [csharpRules, typescriptRules, pythonRules, accessAndErrorRules, supplyChainRules, secretsRules]) {
     for (const found of rules.analyze({ file, language, sourceLines })) {
       addCandidate({
         ...found,
@@ -521,6 +527,7 @@ const FAMILY_ORDER = [
   'Data access',
   'LLM and agent safety',
   'Repository hygiene',
+  'Supply chain and CI/CD',
 ];
 
 // Rules that are not in the `rules` table: they run on a subset of languages, or compare removed lines.
@@ -564,6 +571,20 @@ const extraRuleFamilies = [
   { id: 'PY-609', family: 'Cryptography and randomness', languages: ['python'] },
   { id: 'PY-610', family: 'TLS verification', languages: ['python'] },
   { id: 'PY-611', family: 'Input validation', languages: ['python'] },
+  { id: 'SUP-601', family: 'Supply chain and CI/CD' },
+  { id: 'SUP-602', family: 'Supply chain and CI/CD' },
+  { id: 'SUP-603', family: 'Supply chain and CI/CD' },
+  { id: 'SUP-604', family: 'Supply chain and CI/CD' },
+  { id: 'SUP-605', family: 'Supply chain and CI/CD' },
+  { id: 'SUP-606', family: 'Supply chain and CI/CD' },
+  { id: 'SUP-607', family: 'Supply chain and CI/CD' },
+  { id: 'SEC-601', family: 'Secrets' },
+  { id: 'SEC-602', family: 'Secrets' },
+  { id: 'SEC-603', family: 'Secrets' },
+  { id: 'ACC-601', family: 'Authorization', languages: ['python', 'typescript', 'javascript'] },
+  { id: 'ERR-601', family: 'Error handling and logging', languages: ['python', 'typescript', 'javascript'] },
+  { id: 'ERR-602', family: 'Authorization', languages: ['python', 'typescript', 'javascript'] },
+  { id: 'PY-612', family: 'Injection (SQL, command, HTML)', languages: ['python'] },
   { id: 'HYG-501', family: 'Repository hygiene', languages: ['python'] },
   { id: 'HYG-502', family: 'Repository hygiene' },
 ];
