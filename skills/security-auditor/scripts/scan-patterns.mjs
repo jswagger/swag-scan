@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { renderCoverageLine, summarizeCoverage } from '../../review-tools-common/coverage.mjs';
 import { createFileFilters } from '../../review-tools-common/file-filters.mjs';
+import { createCSharpRules } from './csharp-rules.mjs';
 import { createDataAndLlmRules } from './data-and-llm-rules.mjs';
 import { logicalStatements, looksLikeSql } from './statements.mjs';
 
@@ -14,6 +15,7 @@ const configPath = configFlag !== -1 && process.argv[configFlag + 1]
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const { isExcluded, isTestFile, isReadOnlyPath, isPromptFile } = createFileFilters(config.scan);
 const dataAndLlm = createDataAndLlmRules(config.scan);
+const csharpRules = createCSharpRules(config.scan);
 
 function languageForPath(path) {
   if (/\.py$/i.test(path)) return 'python';
@@ -140,15 +142,15 @@ const rules = [
   {
     id: 'CRIT-108',
     family: 'Unsafe deserialization',
-    description: 'Use of the unsafe BinaryFormatter deserializer',
-    pattern: /\bBinaryFormatter\b/,
+    description: 'Use of an unsafe .NET formatter (BinaryFormatter, NetDataContractSerializer, LosFormatter, SoapFormatter or ObjectStateFormatter) that can run attacker-chosen types',
+    pattern: /\b(?:BinaryFormatter|NetDataContractSerializer|LosFormatter|SoapFormatter|ObjectStateFormatter)\b/,
     languages: ['csharp'],
   },
   {
     id: 'CRIT-109',
     family: 'Unsafe deserialization',
-    description: 'Newtonsoft.Json TypeNameHandling.All may enable unsafe polymorphic deserialization',
-    pattern: /\bTypeNameHandling\s*\.\s*All\b/,
+    description: 'Newtonsoft.Json TypeNameHandling (All, Auto, Objects or Arrays) may enable unsafe polymorphic deserialization',
+    pattern: /\bTypeNameHandling\s*\.\s*(?:All|Auto|Objects|Arrays)\b/,
     languages: ['csharp'],
   },
   {
@@ -161,8 +163,8 @@ const rules = [
   {
     id: 'CRIT-111',
     family: 'TLS verification',
-    description: 'Server certificate validation callback may bypass TLS certificate checks',
-    pattern: /\bServerCertificateValidationCallback\b/,
+    description: 'Server certificate validation callback or DangerousAcceptAnyServerCertificateValidator may bypass TLS certificate checks',
+    pattern: /\bServerCertificate(?:Custom)?ValidationCallback\b|\bDangerousAcceptAnyServerCertificateValidator\b/,
     languages: ['csharp'],
   },
   {
@@ -363,7 +365,9 @@ function addStatementCandidates(file, language, statements, testFile) {
       });
     }
 
-    if (!alreadyReported('CRIT-101') && statement.dynamic && looksLikeSql(statement.sql)) {
+    // The splitter keeps a whole C# class body in one statement, which is not "SQL built from pieces"; C# SQL is checked line by line.
+    const classBody = language === 'csharp' && /\b(?:namespace|class|struct|record|interface)\s+\w+|\)\s*\{[^}]*;/.test(statement.skeleton);
+    if (!classBody && !alreadyReported('CRIT-101') && statement.dynamic && looksLikeSql(statement.sql)) {
       addCandidate({
         ruleId: 'CRIT-101',
         path: file.path,
@@ -478,6 +482,14 @@ for (const file of report.files) {
 
   addStatementCandidates(file, language, statements, testFile);
 
+  for (const found of csharpRules.analyze({ file, language, sourceLines })) {
+    addCandidate({
+      ...found,
+      path: file.path,
+      ...(testFile && config.scan?.testFiles?.mode === 'lower-confidence' ? { confidence: 'lower' } : {}),
+    });
+  }
+
   const llmContext = Boolean(language) && dataAndLlm.llmContext(file, sourceLines);
   for (const found of dataAndLlm.analyze({ file, language, sourceLines, statements, readOnly: isReadOnlyPath(file.path), llmContext })) {
     addCandidate({
@@ -515,6 +527,16 @@ const extraRuleFamilies = [
   { id: 'DATA-502', family: 'Data access', languages: ['python', 'csharp', 'typescript', 'javascript'] },
   ...['LLM-501', 'LLM-502', 'LLM-503'].map((id) => ({ id, family: 'LLM and agent safety', languages: ['python', 'csharp', 'typescript', 'javascript'] })),
   { id: 'LLM-504', family: 'LLM and agent safety', languages: ['python', 'csharp', 'typescript', 'javascript'] },
+  { id: 'CS-601', family: 'Injection (SQL, command, HTML)', languages: ['csharp'] },
+  { id: 'CS-602', family: 'Injection (SQL, command, HTML)', languages: ['csharp'] },
+  { id: 'CS-603', family: 'Unsafe deserialization', languages: ['csharp'] },
+  { id: 'CS-604', family: 'Cryptography and randomness', languages: ['csharp'] },
+  { id: 'CS-605', family: 'Authorization', languages: ['csharp'] },
+  { id: 'CS-606', family: 'Authorization', languages: ['csharp'] },
+  { id: 'CS-607', family: 'Authorization', languages: ['csharp'] },
+  { id: 'CS-608', family: 'Injection (SQL, command, HTML)', languages: ['csharp'] },
+  { id: 'CS-609', family: 'Cryptography and randomness', languages: ['csharp'] },
+  { id: 'CS-610', family: 'Authorization', languages: ['csharp'] },
   { id: 'HYG-501', family: 'Repository hygiene', languages: ['python'] },
   { id: 'HYG-502', family: 'Repository hygiene' },
 ];
@@ -536,6 +558,15 @@ function ruleFamiliesFor(language) {
   return { ran, notCovered };
 }
 
+/** How many rules apply to a language and how many of them produced a candidate: 0 candidates from 3 rules is a thin result, not a clean one. */
+function ruleCounts(language) {
+  const ids = new Set(rulesForLanguage(language).map((rule) => rule.id));
+  const matched = new Set(candidates
+    .filter((candidate) => languageForPath(candidate.path) === language && ids.has(candidate.ruleId))
+    .map((candidate) => candidate.ruleId));
+  return { ran: ids.size, matched: matched.size, matchedNothing: ids.size - matched.size };
+}
+
 const languageNames = { python: 'Python', csharp: 'C#', typescript: 'TypeScript', javascript: 'JavaScript' };
 const filesByLanguage = new Map();
 for (const file of scannedFiles) {
@@ -550,13 +581,15 @@ const ruleFamilies = [...filesByLanguage.entries()]
     label: language ? languageNames[language] : 'Other files (no language detected)',
     files,
     ...ruleFamiliesFor(language),
+    rules: ruleCounts(language),
   }));
 
 const ruleFamiliesLine = ruleFamilies.length
   ? `Rule families that ran: ${ruleFamilies.map((entry) => {
     const counted = `${entry.ran.length} of ${FAMILY_ORDER.length} families`;
     const missing = entry.notCovered.length ? `, no rules for ${entry.notCovered.join(' or ')}` : '';
-    return `${entry.label} (${entry.files} ${entry.files === 1 ? 'file' : 'files'}): ${counted}${missing}`;
+    const found = `, ${entry.rules.matched} of ${entry.rules.ran} rules found something`;
+    return `${entry.label} (${entry.files} ${entry.files === 1 ? 'file' : 'files'}): ${counted}${missing}${found}`;
   }).join('; ')}. No candidates does not mean safe.`
   : 'No scanned files, so no rule families ran.';
 

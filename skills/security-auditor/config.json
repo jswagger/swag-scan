@@ -40,7 +40,7 @@
       "sqlHelpers": ["sql_helper", "SqlHelper", "db_helper", "DbHelper"],
       "sqlHelperWriteMethods": ["execute_non_query", "executenonquery", "insert", "update", "delete", "upsert", "merge", "bulk", "write", "commit", "executemany"],
       "allowedProcedures": [],
-      "tenantPredicates": ["UserGuid", "TenantGuid", "TenantId", "OrgId", "OrganizationId", "AccountId"]
+      "tenantPredicates": ["UserGuid", "UserId", "OwnerId", "TenantGuid", "TenantId", "OrgId", "OrganizationId", "AccountId"]
     },
     "llm": {
       "modelCallWrappers": [

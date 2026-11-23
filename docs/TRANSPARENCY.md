@@ -34,7 +34,7 @@ The scripts call `git` with an argument list, not through a shell. Nothing here 
 ## What it reads
 
 - Your branch diff and the untracked, non-ignored text files in the repository. Binary and oversized files are skipped.
-- The full text of each changed Python, C#, TypeScript and JavaScript file, read by the Security Auditor's scanner so it can match statements that span several lines. It is matched on your machine and not sent anywhere.
+- The full text of each changed Python, C#, TypeScript and JavaScript file, and of changed configuration files such as `web.config`, read by the Security Auditor's scanner so it can match statements that span several lines and look at the lines around a change. It is matched on your machine and not sent anywhere.
 - Code around the changes: callers of changed symbols, and files related to them (see `scope.maxRelatedFiles` in the [reference](REFERENCE.md#security-auditor)).
 - A ticket file (`.xml`, `.md` or `.txt`), only if you give a ticket ID (looked up in `ticketSourcePath`), point to one with `--ticket`, or the branch name names one. A Jira XML export is read by a small parser inside Swag Scan; Word and Excel files are not read. Reviewers see only its title, description and acceptance criteria.
 - `~/.swag-scan/settings.json` (or the file named by `SWAG_SCAN_SETTINGS`): your config (ticket folder, target branch, live view, auto-fix, file size limit). The `SWAG_SCAN_TICKET_DIR` and `SWAG_SCAN_EVENTS` environment variables.
