@@ -192,15 +192,15 @@ test('coverage states which rule families ran for each detected language', () =>
 
   assert.equal(byLanguage.typescript.files, 1);
   assert.equal(byLanguage.typescript.notCovered.includes('Unsafe deserialization'), true);
-  assert.equal(byLanguage.typescript.notCovered.includes('TLS verification'), true);
+  assert.equal(byLanguage.typescript.notCovered.includes('TLS verification'), false);
   assert.deepEqual(byLanguage.python.notCovered, []);
   assert.equal(byLanguage.other.files, 1);
-  assert.match(report.coverage.ruleFamiliesLine, /TypeScript \(1 file\): 12 of 14 families, no rules for Unsafe deserialization or TLS verification/);
+  assert.match(report.coverage.ruleFamiliesLine, /TypeScript \(1 file\): 13 of 14 families, no rules for Unsafe deserialization/);
   assert.match(report.coverage.ruleFamiliesLine, /No candidates does not mean safe\./);
 
   const families = byLanguage.python.ran.map((item) => item.family);
   assert.equal(families.includes('Secrets'), true);
-  assert.deepEqual(byLanguage.python.ran.find((item) => item.family === 'Code and command execution').rules, ['CRIT-104', 'CRIT-105']);
+  assert.deepEqual(byLanguage.python.ran.find((item) => item.family === 'Code and command execution').rules, ['CRIT-104', 'CRIT-105', 'PY-601']);
 });
 
 test('coverage reports scan.readOnlyPaths, empty by default', () => {
