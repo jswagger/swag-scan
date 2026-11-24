@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { storeCache } from './cache.mjs';
 import { emit } from './events.mjs';
 import { SEVERITIES } from './findings.mjs';
+import { rulesApplied } from './rule-catalog.mjs';
 import { renderReportHtml } from './report-html.mjs';
 
 export const REPORT_SCHEMA = 1;
@@ -45,10 +46,16 @@ function agentState(agent, report) {
 }
 
 export function buildReport({ summary, findings, ticket }, { now = new Date() } = {}) {
-  const agents = summary.agents.map((agent) => ({
-    id: agent.id, name: agent.name, tool: agent.tool, leads: agent.leads ?? 0,
-    ...agentState(agent, findings[agent.id]),
-  }));
+  const agents = summary.agents.map((agent) => {
+    const state = agentState(agent, findings[agent.id]);
+    const rules = rulesApplied(agent.tool, agent.coverage);
+    // "N rules applied" goes on every result where files were read, so a short result is not mistaken for a thin check.
+    return {
+      id: agent.id, name: agent.name, tool: agent.tool, leads: agent.leads ?? 0,
+      ...state,
+      ...(rules ? { rulesApplied: rules, text: `${state.text} ${plural(rules, 'rule')} applied.` } : {}),
+    };
+  });
   const order = summary.agents.map((agent) => agent.id);
   const all = summary.agents.flatMap((agent) => (findings[agent.id]?.findings ?? []).map((finding) => ({ ...finding, agent: agent.id, agentName: agent.name })));
   const byOrder = (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) || order.indexOf(a.agent) - order.indexOf(b.agent) || a.id.localeCompare(b.id, undefined, { numeric: true });
@@ -135,7 +142,7 @@ export function renderMarkdown(report) {
   const out = [];
   const base = report.base ? `${report.base.ref}${report.base.autoDetected ? ' (auto-detected)' : ''}` : 'no base found';
   out.push(`# Swag Scan report: ${report.branch ?? 'detached HEAD'} vs ${base}`, '');
-  out.push([report.head ? `commit \`${report.head.slice(0, 7)}\`` : '', report.ticket ? `ticket ${report.ticket.id}${report.ticket.title && !report.ticket.title.startsWith(report.ticket.id) ? ` (${report.ticket.title})` : report.ticket.title ? ` (${report.ticket.title.slice(report.ticket.id.length).replace(/^[:\s-]+/, '')})` : ''}` : 'no ticket', `pass 1 used ${report.modelTokensInPass1} model tokens`].filter(Boolean).join(' · '), '');
+  out.push([report.head ? `commit \`${report.head.slice(0, 7)}\`` : '', report.ticket ? `ticket ${report.ticket.id}${report.ticket.title && !report.ticket.title.startsWith(report.ticket.id) ? ` (${report.ticket.title})` : report.ticket.title ? ` (${report.ticket.title.slice(report.ticket.id.length).replace(/^[:\s-]+/, '')})` : ''}` : 'no ticket'].filter(Boolean).join(' · '), '');
 
   const { counts } = report;
   out.push(counts.needsDecision

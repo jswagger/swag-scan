@@ -62,7 +62,7 @@ When every agent that was started has replied, build the combined report:
 swag-scan report
 ```
 
-It reads what the agents saved and prints one decisions-first report: what needs the developer's decision (a table with 🔴 Critical, 🟡 Feature gap / design issue and ✅ Cleanup / minor), what was fixed, who looked at what, and coverage. Show it to the user as is. Add nothing to the findings and do not merge, re-rank or soften them.
+It reads what the agents saved and prints one decisions-first report: what needs the developer's decision (a table with 🔴 Critical, 🟠 Feature gap / design issue and 🟡 Cleanup / minor), what was fixed, who looked at what, and coverage. Show it to the user as is. Add nothing to the findings and do not merge, re-rank or soften them.
 
 - If it says an agent did not report, tell the user plainly that the area was not reviewed. Do not start that agent again unless the user asks.
 - The report ends its summary with a next step. Do not add a list of flags.

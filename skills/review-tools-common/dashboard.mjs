@@ -285,9 +285,11 @@ function writeAtomic(path, text) {
  * Writes the page and its data file next to each other in <swagDir> (the repo's .swag-scan folder, outside the run
  * folder because a new run replaces that). Never throws for a missing run: it draws "Waiting for a scan".
  */
-export function writeDashboard({ swagDir, now = Date.now(), pageOnly = false } = {}) {
+export function writeDashboard({ swagDir, now = Date.now(), pageOnly = false, blank = false } = {}) {
   const runDir = join(swagDir, 'run');
-  const state = buildState(readEvents(runDir), readSummary(runDir), { now });
+  // `blank` draws "Waiting for a scan" instead of the run on disk: used while that run is a finished one left over from
+  // before, so a new tab never flashes the old stats as if they were the new run's.
+  const state = blank ? buildState([], undefined, { now }) : buildState(readEvents(runDir), readSummary(runDir), { now });
   // The button on the finished banner. The path is relative to the page, which sits in .swag-scan/.
   if (state.status === 'done' && state.result) {
     const readable = ['report.html', 'report.md'].find((name) => existsSync(join(runDir, name))); // the web page reads better than raw Markdown
@@ -338,13 +340,14 @@ export function watchDashboard({ swagDir, intervalMs = 1500, maxIdleMs = 30 * 60
     const isLeftover = (state) => (before.status === 'done' || before.status === 'error') && state.startedAt === before.startedAt && state.endedAt === before.endedAt;
     // The page file embeds the state it was written with, and a page that embeds a finished run never polls again. So when
     // the run changes (a new start time, or the status moves), the page file is rewritten too, not only the data file.
-    let pageKey = `${before.status}|${before.startedAt}`;
+    let pageKey = isLeftover(before) ? 'waiting|undefined' : `${before.status}|${before.startedAt}`;
     const tick = () => {
       let state;
       try {
         const current = buildState(readEvents(join(swagDir, 'run')), undefined);
-        const key = `${current.status}|${current.startedAt}`;
-        ({ state } = writeDashboard({ swagDir, pageOnly: key === pageKey }));
+        const leftover = isLeftover(current);
+        const key = `${leftover ? 'waiting' : current.status}|${leftover ? undefined : current.startedAt}`;
+        ({ state } = writeDashboard({ swagDir, pageOnly: key === pageKey, blank: leftover }));
         pageKey = key;
       } catch {
         // A failed write must never end the watcher: the page shows "not updating" and the next tick tries again.
@@ -375,7 +378,7 @@ export function watchDashboard({ swagDir, intervalMs = 1500, maxIdleMs = 30 * 60
     // The first write is a full page, so the file exists before the user opens it.
     cleanStaleTemps(swagDir);
     try {
-      writeDashboard({ swagDir });
+      writeDashboard({ swagDir, blank: isLeftover(before) });
     } catch {
       // Same rule as in tick: a failed write is retried, never fatal.
     }

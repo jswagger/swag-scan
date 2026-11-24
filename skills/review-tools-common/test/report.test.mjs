@@ -41,11 +41,11 @@ test('decisions are sorted critical first across agents, with ids, severity word
   assert.deepEqual(report.decisions.map((f) => f.id), ['SG-1', 'AN-1', 'IN-1']);
   assert.match(markdown, /\*\*3 items need your decision\*\* \(1 critical, 1 design, 1 minor\)/);
   assert.match(markdown, /\| SG-1 \| 🔴 Critical \| \*\*SQL built by concatenation\*\* · `app.js:4` · `CRIT-101` \|/);
-  assert.match(markdown, /\| AN-1 \| 🟡 Feature gap \/ design issue \| \*\*Retry changed\*\* · `a.js:2` \|/);
-  assert.match(markdown, /\| IN-1 \| ✅ Cleanup \/ minor \|/);
+  assert.match(markdown, /\| AN-1 \| 🟠 Feature gap \/ design issue \| \*\*Retry changed\*\* · `a.js:2` \|/);
+  assert.match(markdown, /\| IN-1 \| 🟡 Cleanup \/ minor \|/);
   assert.match(markdown, /\*\*Next:\*\* Start with SG-1: SQL built by concatenation\./);
   assert(markdown.indexOf('| SG-1 |') < markdown.indexOf('| AN-1 |') && markdown.indexOf('| AN-1 |') < markdown.indexOf('| IN-1 |'));
-  assert.match(markdown, /pass 1 used 0 model tokens/);
+  assert.doesNotMatch(markdown, /model tokens/);
   assert.match(markdown, /commit `abcdef1`/);
 });
 
@@ -101,7 +101,7 @@ test('each agent is described honestly: reviewed, no leads, already reviewed, no
   assert.deepEqual(report.agents.map((entry) => entry.state), ['missing', 'no-leads', 'cached']);
   const markdown = renderMarkdown(report);
   assert.match(markdown, /\| Analyst \| ⚠ Did not report: 4 leads found, but no findings were saved\./);
-  assert.match(markdown, /\| Inspector \| No leads, so no model review\. This is not a check that the code is sound\. \|/);
+  assert.match(markdown, /\| Inspector \| No leads, so no model review\. This is not a check that the code is sound\. 11 rules applied\. \|/);
   assert.match(markdown, /\| Security Guard \| Already reviewed at this commit\. Earlier report: \/r\/report\.md\./);
   assert.match(markdown, /Analyst did not report/);
 
@@ -203,4 +203,23 @@ test('the report command: markdown on stdout, a plain error without a scan, JSON
   const json = JSON.parse(spawnSync(process.execPath, [cli, 'report', '--repo', repo, '--json'], { encoding: 'utf8' }).stdout);
   assert.equal(json.schemaVersion, 1);
   assert.equal(spawnSync(process.execPath, [cli, 'report', '--fresh'], { encoding: 'utf8' }).status, 1);
+});
+
+test('who looked at what says how many rules each agent applied to the languages it read', () => {
+  const csharp = { checked: { 'C#': 2 }, unchecked: [], line: 'Coverage: Checked: C# (2 files).' };
+  const report = buildReport({
+    summary: summary([agent(0, { coverage: csharp }), agent(1, { coverage: csharp, leads: 0 }), agent(2, { coverage: { ...csharp, ruleFamilies: [{ language: 'csharp', ran: [{ family: 'F', rules: ['CS-1', 'CS-2', 'CS-3'] }] }] } })]),
+    findings: {},
+  }, { now: NOW });
+  const markdown = renderMarkdown(report);
+  assert.match(markdown, /\| Analyst \|[^\n]*9 rules applied\. \|/);
+  assert.match(markdown, /\| Inspector \|[^\n]*No leads[^\n]*9 rules applied\. \|/);
+  assert.match(markdown, /\| Security Guard \|[^\n]*3 rules applied\. \|/);
+  assert.equal(report.agents[0].rulesApplied, 9);
+});
+
+test('no rule count is claimed when nothing in a supported language was read', () => {
+  const none = { checked: {}, unchecked: [], line: 'Coverage: Checked: nothing in a supported language.' };
+  const report = buildReport({ summary: summary([agent(0, { coverage: none })]), findings: {} }, { now: NOW });
+  assert.doesNotMatch(renderMarkdown(report), /rules? applied/);
 });
