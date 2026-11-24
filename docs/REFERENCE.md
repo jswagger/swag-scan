@@ -32,8 +32,8 @@ Each agent hands in its judged findings in one shared shape, saved by `skills/re
 | Severity | Meaning | Needs |
 | --- | --- | --- |
 | 🔴 `critical` | Will break or is exploitable | `evidence` (a concrete failing input or state) and a `recommendation` or something to `verify` |
-| 🟡 `design` | Feature gap or design issue | `verify`: the one thing to check |
-| ✅ `minor` | Cleanup | `recommendation` |
+| 🟠 `design` | Feature gap or design issue | `verify`: the one thing to check |
+| 🟡 `minor` | Cleanup | `recommendation` |
 
 | Disposition | Meaning |
 | --- | --- |
@@ -126,7 +126,7 @@ A regression safety net. It looks for removed guards, dropped awaits, changed co
 
 - **Rules:** `REMOVED_GUARD`, `REMOVED_AWAIT`, `REMOVED_ERROR_HANDLING`, `REMOVED_CLEANUP`, `MISSING_RELEASE`, `REMOVED_EARLY_EXIT`, `BEHAVIOR_CHANGE_PAIR`, `SIGNATURE_CHANGED`, `REMOVED_TEST_ASSERTION`, `TEST_DISABLED`.
 - **Packets:** scripts rank findings by risk and bundle them with surrounding code and callers. Large diffs hit a size gate and ask whether to review everything or only the riskiest changes.
-- **Languages:** JavaScript/TypeScript, C#, Python.
+- **Languages:** TypeScript, JavaScript, Python, C#.
 - **Reports:** saved to `.bug-hunter/reports`. Add `.bug-hunter/` to `.gitignore`.
 - **Silence a finding:** `bug-hunter-ignore` or `bug-hunter-ignore: RULE_NAME` inline.
 

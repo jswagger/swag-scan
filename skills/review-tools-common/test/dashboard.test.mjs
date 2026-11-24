@@ -190,7 +190,9 @@ test('the watcher rewrites the page file when a new run starts, so a finished pa
   writeFileSync(join(runDir, 'events.jsonl'), `${JSON.stringify(ev(0, { kind: 'run-started', agent: 'swag-scan' }))}\n${JSON.stringify(ev(1, { kind: 'run-done', agent: 'swag-scan', count: 9 }))}\n`);
   const watching = watchDashboard({ swagDir, intervalMs: 20 });
   await new Promise((resolve) => setTimeout(resolve, 80));
-  assert.match(readFileSync(join(swagDir, DASHBOARD_FILE), 'utf8'), /"status":"done"/, 'the page starts out holding the old finished run');
+  const opening = readFileSync(join(swagDir, DASHBOARD_FILE), 'utf8');
+  assert.match(opening, /"status":"waiting"/, 'the page starts out blank, not holding the old finished run');
+  assert.doesNotMatch(opening, /"status":"done"/);
   rmSync(runDir, { recursive: true, force: true });
   mkdirSync(runDir, { recursive: true });
   emit(runDir, { kind: 'run-started' });
@@ -221,4 +223,32 @@ test('a finished page keeps a slow poll, so an old browser tab notices a newer r
   const page = readFileSync(PAGE_TEMPLATE, 'utf8');
   assert.match(page, /DONE_POLL_MS/);
   assert.doesNotMatch(page, /if \(data\.status === 'live' \|\| data\.status === 'waiting'\) timer/);
+});
+
+test('a finished run from before is never drawn as the new run: the first write and every tick say "waiting"', async (context) => {
+  const swagDir = join(folder(context), '.swag-scan');
+  const runDir = join(swagDir, 'run');
+  mkdirSync(runDir, { recursive: true });
+  writeFileSync(join(runDir, 'events.jsonl'), `${JSON.stringify(ev(0, { kind: 'run-started', agent: 'swag-scan' }))}\n${JSON.stringify(ev(1, { kind: 'run-done', agent: 'swag-scan', count: 9 }))}\n`);
+  const watching = watchDashboard({ swagDir, intervalMs: 20 });
+  for (const wait of [0, 100]) {
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    const data = readFileSync(join(swagDir, DATA_FILE), 'utf8');
+    assert.match(data, /"status":"waiting"/);
+    assert.doesNotMatch(data, /"status":"done"/);
+  }
+  rmSync(runDir, { recursive: true, force: true });
+  mkdirSync(runDir, { recursive: true });
+  emit(runDir, { kind: 'run-started' });
+  emit(runDir, { kind: 'run-done', phase: 'report', count: 1 });
+  assert.equal((await watching).status, 'done');
+});
+
+test('writeDashboard with blank draws "waiting" even when a finished run is on disk', (context) => {
+  const swagDir = join(folder(context), '.swag-scan');
+  const runDir = join(swagDir, 'run');
+  mkdirSync(runDir, { recursive: true });
+  writeFileSync(join(runDir, 'events.jsonl'), `${JSON.stringify(ev(0, { kind: 'run-started', agent: 'swag-scan' }))}\n${JSON.stringify(ev(1, { kind: 'run-done', agent: 'swag-scan', count: 9 }))}\n`);
+  assert.equal(writeDashboard({ swagDir, blank: true }).state.status, 'waiting');
+  assert.equal(writeDashboard({ swagDir }).state.status, 'done', 'without blank the finished run still shows');
 });

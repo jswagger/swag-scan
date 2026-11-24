@@ -12,8 +12,8 @@ export const FINDINGS_SCHEMA_VERSION = 1;
 /** Severity is tool-independent. Each tool maps its own labels onto these three. */
 export const SEVERITIES = {
   critical: { icon: '🔴', label: 'Critical' },
-  design: { icon: '🟡', label: 'Feature gap / design issue' },
-  minor: { icon: '✅', label: 'Cleanup / minor' },
+  design: { icon: '🟠', label: 'Feature gap / design issue' },
+  minor: { icon: '🟡', label: 'Cleanup / minor' },
 };
 
 /** What happened to the finding. `would-auto-fix` means a safe fix exists but auto-fix was off for this run. */

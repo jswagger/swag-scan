@@ -2,6 +2,17 @@
 
 Swag Scan follows [semantic versioning](https://semver.org). It is in beta, so it stays below 1.0.0: a new feature or a change that renames or removes something raises the minor number (0.1.0 to 0.2.0), and a fix, docs or chore change raises the patch number (0.1.0 to 0.1.1). The version lives in `.claude-plugin/plugin.json`, and every pull request raises it and adds an entry here, newest first.
 
+## 0.8.0 - SS-105
+
+Styling and phrasing improvements to the live view and the final report.
+
+- **Live Feed.** The dashboard's timeline is now titled "Live Feed" (it was "What the crew has said").
+- **No more "0 model tokens" in the report.** The report's header line shows the commit and ticket only. The script pass uses no model tokens, but the line read as if the whole review had used none.
+- **Re-runs start from a blank dashboard.** When an earlier run had finished, the new tab used to show its old stats as complete for a few seconds. The live view now starts on "Waiting for a scan" and stays there until the new run begins.
+- **Supported languages in the README.** TypeScript, JavaScript, Python and C# are listed near the top.
+- **Severity colors step up.** 🟡 Cleanup / minor, 🟠 Feature gap / design issue, 🔴 Critical. ✅ is no longer used for minor items. ⚪ Unchecked is unchanged.
+- **Rules applied.** In "Who looked at what" each result now ends with how many rules that agent applied to the languages in your change, such as "17 rules applied". Bug Hunter and Code Sweeper rules are now listed in `skills/review-tools-common/rule-catalog.mjs`, and a test fails if that list and the scripts disagree.
+
 ## 0.7.0 - SS-104 (part 3: supply chain, secrets, access control, error handling)
 
 The Security Auditor now looks beyond application code: build files, dependencies, committed secrets and the way errors are handled.

@@ -18,8 +18,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkCache } from './cache.mjs';
-import { emit } from './events.mjs';
-import { DASHBOARD_FILE, watchDashboard, writeDashboard } from './dashboard.mjs';
+import { emit, readEvents } from './events.mjs';
+import { DASHBOARD_FILE, buildState, watchDashboard, writeDashboard } from './dashboard.mjs';
 import { writeReport } from './report.mjs';
 import { loadSettings, parseSetting, renderSettings, saveSettings, SETTING_KEYS, SETUP_MESSAGE, SettingsError } from './settings.mjs';
 import { looksLikePath } from './ticket.mjs';
@@ -410,7 +410,10 @@ export async function dashboardScan({ repo = process.cwd(), watch = false, open 
   const root = git(resolve(repo), ['rev-parse', '--show-toplevel']);
   if (!root) throw new PlainError(`${resolve(repo)} is not a git repository, so there is no scan to show.`);
   const swagDir = join(root, '.swag-scan');
-  const { page, state } = writeDashboard({ swagDir });
+  // Watching means a scan is about to start. If the run on disk already finished, draw "waiting" first, so the new tab
+  // never shows the old run's stats as complete until the new run replaces them.
+  const earlier = buildState(readEvents(join(swagDir, 'run')), undefined);
+  const { page, state } = writeDashboard({ swagDir, blank: watch && (earlier.status === 'done' || earlier.status === 'error') });
   log(`Live view: ${page}`);
   if (open) openInBrowser(page);
   if (!watch) return { page, state };

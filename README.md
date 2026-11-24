@@ -14,19 +14,21 @@
 
 > **Beta.** Swag Scan is still being tested on real projects and is not at 1.0. Expect rough edges, and expect behavior to change between updates. Findings are leads for a human to judge, not verdicts, and the report never says your code is "clean". [Open an issue](https://github.com/jswagger/swag-scan/issues) if something looks wrong.
 
+**Supported languages:** TypeScript, JavaScript, Python and C#. Files in any other language are listed as ⚪ Unchecked in the report, never as clean.
+
 ## See it work
 
 <p align="center">
-  <img src="assets/dashboard/live-view.png" alt="The Swag Scan live view: five steps, file counts, each reviewer's latest line and a timeline of what the crew has said" width="800">
+  <img src="assets/dashboard/live-view.png" alt="The Swag Scan live view: five steps, file counts, each reviewer's latest line and a Live Feed timeline" width="800">
 </p>
 
 While a scan runs, a page opens in your browser showing the five steps, the counts, each reviewer's latest line and a newest-first timeline. Scripts build it from a local event log, so it costs no model tokens. *The image is an illustrative mock-up with sample data; it also shows a Test Runner tool that is still on the roadmap.*
 
 When the scan finishes you get one decisions-first report:
 
-- what needs your decision (🔴 Critical, 🟡 Feature gap or design issue, ✅ Cleanup),
+- what needs your decision (🔴 Critical, 🟠 Feature gap or design issue, 🟡 Cleanup),
 - what was fixed,
-- who looked at what, and the language coverage.
+- who looked at what (with how many rules each reviewer applied), and the language coverage.
 
 ## The crew
 
