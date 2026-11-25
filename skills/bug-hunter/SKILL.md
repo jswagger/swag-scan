@@ -24,7 +24,7 @@ Read [config.json](./config.json) first. Key settings:
 - `ticketContext`: optional `{ path, ticketName, maxLines }`. The ticket is chosen from `--ticket` (an ID such as `PROJ-123`, or a path to a file), else `ticketName`, else the ID in the branch name (`feature/PROJ-123`). An ID is looked up as `<ID>.md` or `.txt` in the first ticket folder set of: `--ticket-dir`, `SWAG_SCAN_TICKET_DIR`, `ticketFolder` in `~/.swag-scan/settings.json`, `ticketContext.path`. With a user-level folder set, `ticketContext` can stay `null`. No path is built in.
 - `rules.disabled`, `rules.severityOverrides`, and inline `bug-hunter-ignore[: RULE]` comments tune script noise.
 - `models.<agent>.basic` / `.advanced`: preferred model selectors for your agent (`claude` or `copilot`); `null` or missing means the agent's default model. If model-selectable subagents are unavailable or the entry is unset, do both passes yourself and do not claim a model switch.
-- `report.outputDir` (default `.bug-hunter/reports`): where reports are written. Add `.bug-hunter/` to `.gitignore`.
+- `report.outputDir` (default `.bug-hunter/reports`): where reports are written when Bug Hunter runs on its own. Keep `.bug-hunter/` out of git with `.git/info/exclude` (or `.gitignore`). Under Swag Scan, reports go to `.swag-scan/reports/<commit>/`.
 
 ## Procedure
 

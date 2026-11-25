@@ -81,13 +81,15 @@ node skills/review-tools-common/swag-scan.mjs dashboard [--watch] [--open]
 
 ### Run everything at once
 
-One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, it uses no model tokens, and it changes no files:
+One fixed command runs all three agents' scripts in a fixed order. No model decides what runs, and the scripts use no model tokens (the reviewers that start afterwards do). It changes no files in your working tree; on the first run it adds `.swag-scan/` to the clone's own `.git/info/exclude`:
 
 ```bash
 node skills/review-tools-common/swag-scan.mjs run [PROJ-123] [--base main] [--ticket-dir <dir>] [--agents analyst,security-guard] [--fresh] [--json]
 ```
 
-`run` needs the config (below) and stops with "Please set up your config file first. Run /swag-scan:config to get started." without it. It compares against `targetBranch`, passes `maxFileLines` to the Code Sweeper and records `autoFix` for the Inspector in `summary.json` under `settings`. `--base` and `--ticket-dir` stay as one-off overrides for scripts and CI; `/swag-scan:run` never passes them.
+`run` works without a config: it uses the defaults below and the summary says so (`usedDefaults` in `summary.json`). It checks Node (22 or newer; 22 and 24 are tested) and git first, and stops with one sentence if either is missing. It compares against, in order: `--base`, this repository's own branch, the config's `targetBranch`, then `auto`. It passes `maxFileLines` to the Code Sweeper and records `autoFix` for the Inspector in `summary.json` under `settings`. `--base` and `--ticket-dir` stay as one-off overrides for scripts and CI; `/swag-scan:run` never passes them.
+
+If the named branch does not exist (and neither does `origin/<name>`), the run stops before it spends anything and says which branches it found and which one it suggests. A step that fails unexpectedly is reported as one sentence with a next step, not as a script path and a raw git message. If none of the changed files is in a supported language, `summary.json` has `noSupportedLanguage: true` and the summary says so on its second line.
 
 ### Config
 
@@ -96,12 +98,22 @@ node skills/review-tools-common/swag-scan.mjs run [PROJ-123] [--base main] [--ti
 | Key | Default | What it does |
 | --- | --- | --- |
 | `ticketSourcePath` | none | Folder of Jira XML exports. `/swag-scan:run ID-123` reads `ID-123.xml` there. The older name `ticketFolder` is still read until `ticketSourcePath` is saved. |
-| `targetBranch` | `main` | The branch the change is compared against. |
+| `targetBranch` | `auto` | The branch the change is compared against. `auto` tries `origin/HEAD`, `develop`, `test`, `main` and `master` and picks the closest one your branch grew from; anything else is used as given (`main` also matches `origin/main` when there is no local `main`). |
 | `liveDashboard` | `true` | Whether `/swag-scan:run` opens the live view. |
 | `autoFix` | `false` | Whether the Inspector may fix clear, low-risk cleanup items. Replaces `autoFix.enabled` in the Code Sweeper's `config.json` for runs started by Swag Scan. |
 | `maxFileLines` | `1000` | The Code Sweeper flags a changed file longer than this (and only when it is new, just crossed the limit, or grew by `minFileGrowthLines`). Replaces `scan.thresholds.maxFileLines` for runs started by Swag Scan. |
 
-The same file can be read and changed from a shell: `swag-scan config` (show), `swag-scan config get <key>`, `swag-scan config set <key> <value> [<key> <value> ...]`, `swag-scan config path`. A value that cannot be used is refused with one sentence and nothing is saved. The config counts as set up only when all five keys are saved, so an old file with just `ticketFolder` is asked to run `/swag-scan:config` once.
+The same file can be read and changed from a shell: `swag-scan config` (show), `swag-scan config get <key>`, `swag-scan config set <key> <value> [<key> <value> ...]`, `swag-scan config path`. A value that cannot be used is refused with one sentence and nothing is saved. The config counts as set up only when all five keys are saved. Runs work either way: that only decides whether the summary says the defaults were used.
+
+**One repository, another branch.** The file can also hold `repoTargetBranches`, a map from a repository's folder to the branch to compare against there. It beats `targetBranch` and is not one of the five keys, so it never changes whether the config counts as set up. Set it with `swag-scan config set targetBranch <branch> --this-repo`, read the value in force with `swag-scan config get targetBranch --this-repo`, and remove it with `swag-scan config unset targetBranch --this-repo`. `--repo <dir>` names another repository.
+
+### Doctor
+
+`swag-scan doctor [--repo <dir>] [--json]` checks Node, git, that the folder is a repository with a commit, that the branch to compare against exists (for `auto`, which candidates do), the ticket folder, and whether `.swag-scan/` is already ignored. Each line is ✅, 🟡 or 🔴, and a 🔴 or 🟡 line says the next step. It exits 1 if anything is 🔴 and writes nothing.
+
+### The local ignore rule
+
+On every run, if git does not already ignore `.swag-scan/`, Swag Scan appends `.swag-scan/` to the clone's `.git/info/exclude` (found with `git rev-parse --git-path info/exclude`, so worktrees work) and logs one line saying so. That file is local to your clone and never committed. Nothing is added when `.gitignore`, a global ignore file or the exclude file already covers the folder, and a failure to write it never stops a scan.
 
 It prints one progress line per agent, then a short summary: leads per agent, the language coverage line, the ticket it found, and whether a stored review already covers this commit. Leads are script matches, not verified findings. Results are written to `.swag-scan/run/` (replaced every run, gitignored). Because the command is always the same shape, one permission rule covers it.
 
@@ -125,9 +137,9 @@ Which diff is reviewed:
 A regression safety net. It looks for removed guards, dropped awaits, changed contracts, and broken callers, then reads your ticket, including anything labeled Acceptance Criteria, as context for what the change is meant to do and why it may be wrong.
 
 - **Rules:** `REMOVED_GUARD`, `REMOVED_AWAIT`, `REMOVED_ERROR_HANDLING`, `REMOVED_CLEANUP`, `MISSING_RELEASE`, `REMOVED_EARLY_EXIT`, `BEHAVIOR_CHANGE_PAIR`, `SIGNATURE_CHANGED`, `REMOVED_TEST_ASSERTION`, `TEST_DISABLED`.
-- **Packets:** scripts rank findings by risk and bundle them with surrounding code and callers. Large diffs hit a size gate and ask whether to review everything or only the riskiest changes.
+- **Packets:** scripts rank findings by risk and bundle them with surrounding code and callers. Large diffs hit a size gate. Under `swag-scan run` (which never asks questions) the gate reviews the riskiest changes first and the summary says how many parts were skipped. When Bug Hunter runs on its own, it asks whether to review everything or only the riskiest changes.
 - **Languages:** TypeScript, JavaScript, Python, C#.
-- **Reports:** saved to `.bug-hunter/reports`. Add `.bug-hunter/` to `.gitignore`.
+- **Reports:** under Swag Scan, in `.swag-scan/reports/<commit>/` (ignored for you, see [The local ignore rule](#the-local-ignore-rule)). When Bug Hunter runs on its own, in `.bug-hunter/reports`; keep that folder out of git with `.git/info/exclude` (or `.gitignore`).
 - **Silence a finding:** `bug-hunter-ignore` or `bug-hunter-ignore: RULE_NAME` inline.
 
 | Setting | Purpose | Default |
@@ -138,11 +150,11 @@ A regression safety net. It looks for removed guards, dropped awaits, changed co
 | `repositoryContext` | Nearby docs for local patterns and invariants | `null` |
 | `rules.disabled` / `rules.severityOverrides` | Tune noisy rules | none |
 | `models.<agent>.basic` / `.advanced` | See [Model roles](#model-roles) | |
-| `report.outputDir` | Where reports are written | `.bug-hunter/reports` |
+| `report.outputDir` | Where reports are written when Bug Hunter runs on its own | `.bug-hunter/reports` |
 
 ### Re-runs are cached
 
-When nothing has changed since the last review (same commit, same base, same config and ticket, same tool version), Bug Hunter returns the earlier report instead of repeating the review. Results are kept in `.swag-scan/cache/` (add it to `.gitignore`). Nothing is cached while you have uncommitted changes, and asking for a fresh run (`--fresh`) skips the cache for every selected agent, so all of them review again. The cache is per agent: if only the ticket changed, only the agents that read the ticket (the Analyst) review again, and the others report "Reused the earlier review of this commit". The dashboard and report count their earlier findings and label them as reused.
+When nothing has changed since the last review (same commit, same base, same config and ticket, same tool version), Bug Hunter returns the earlier report instead of repeating the review. Results are kept in `.swag-scan/cache/` (already ignored: the first run adds `.swag-scan/` to `.git/info/exclude`). Nothing is cached while you have uncommitted changes, and asking for a fresh run (`--fresh`) skips the cache for every selected agent, so all of them review again. The cache is per agent: if only the ticket changed, only the agents that read the ticket (the Analyst) review again, and the others report "Reused the earlier review of this commit". The dashboard and report count their earlier findings and label them as reused.
 
 ### Ticket files
 
@@ -176,16 +188,18 @@ Bug Hunter reads a ticket to understand what the change is for. It needs no conf
 
 Checks changed code for long lines and functions, nested conditionals, heavy boolean logic, long comments, duplication, loose types, oversized files, and weak tests (`SWEEP-101` to `SWEEP-112`).
 
-Auto-fix is on by default for clear, low-risk findings. Dusty findings are never auto-fixed, and test removal stays off until you set `tests.removeLowValue` in `config.json`.
+Under Swag Scan, auto-fix is **off** by default: it follows the `autoFix` setting in your config, which replaces `autoFix.enabled` below for runs that Swag Scan starts. The `true` default in the table below applies only when the Code Sweeper runs on its own. Dusty findings are never auto-fixed, and test removal stays off until you set `tests.removeLowValue` in `config.json`.
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
-| `autoFix.enabled` | Fix clear, low-risk 🔴 findings (`--no-fix` overrides per run) | `true` |
+| `autoFix.enabled` | Fix clear, low-risk 🔴 findings when the Code Sweeper runs on its own (`--no-fix` overrides per run; Swag Scan's `autoFix` setting replaces it) | `true` |
 | `tests.removeLowValue` | Allow removing low-value tests | `false` |
 | `scan.exclude` / `scan.testFiles.patterns` | Files skipped, and paths treated as tests | see config |
 | `scan.thresholds` | Review heuristics, not hard style rules | see config |
 
 ## Security Auditor
+
+**What is not reviewed.** Languages other than TypeScript, JavaScript, Python and C# are listed as ⚪ Unchecked. A Dockerfile, Terraform, general YAML and JSON, and `appsettings.json` get no bug, cleanup or configuration review. The Security Auditor does still look in every changed file for well-known secret formats, and it reads build files (`package.json`, `requirements*.txt`, `pyproject.toml`, `.csproj`), GitHub workflow files, `.env` files and MCP config for the rules in the changelog entries for 0.6 and 0.7.
 
 Scans JavaScript/TypeScript, Python, and C# by file, so language-specific heuristics only run on matching files. Python, C#, TypeScript and JavaScript files are read in full so a statement written over several lines, or built from several string pieces, is matched as one. `.mjs`, `.cjs`, `.mts` and `.cts` count as JavaScript or TypeScript, and `.cshtml` and `.razor` as C#. The scan coverage lists, for each language, which rule families ran and which have no rules (`coverage.ruleFamilies`), so an empty result is never read as "safe". Coverage is heuristic, not exhaustive.
 
