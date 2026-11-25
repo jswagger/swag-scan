@@ -225,7 +225,7 @@ test('saved findings write their id, severity and file, never their text; the re
 
 test('a failing scan ends its log with an error event', (context) => {
   const repo = scannedRepo(context);
-  assert.throws(() => runScan({ repo, base: 'no-such-ref' }), /collect-diff\.mjs failed/);
+  assert.throws(() => runScan({ repo, base: 'no-such-ref' }), /could not find a branch named "no-such-ref"/);
   const events = readEvents(join(repo, '.swag-scan', 'run'));
   assert.equal(events.at(-1).kind, 'error');
   assert.equal(events.at(-1).agent, 'analyst');

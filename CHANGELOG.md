@@ -2,6 +2,23 @@
 
 Swag Scan follows [semantic versioning](https://semver.org). It is in beta, so it stays below 1.0.0: a new feature or a change that renames or removes something raises the minor number (0.1.0 to 0.2.0), and a fix, docs or chore change raises the patch number (0.1.0 to 0.1.1). The version lives in `.claude-plugin/plugin.json`, and every pull request raises it and adds an entry here, newest first.
 
+## 0.9.0 - SS-109
+
+User experience improvements, mostly for a first run in a new repository.
+
+- **The branch to compare against is found for you.** `targetBranch` now defaults to `auto`: Swag Scan tries `origin/HEAD`, `develop`, `test`, `main` and `master` and picks the closest one your branch grew from. Repositories on `master`, or with only `origin/main`, no longer stop with "Not a valid object name main". A branch you saved earlier, such as `main`, keeps working, and `main` also matches `origin/main` when there is no local `main`.
+- **A missing branch is explained.** If the branch you named does not exist, the run stops before it spends anything, lists the branches it found, suggests one, and says how to change it.
+- **One repository can use a different branch.** `/swag-scan:config` asks whether a branch is for every repository or this one only, and `swag-scan config set targetBranch <branch> --this-repo` (and `get`, `unset`) does the same from a shell.
+- **No setup needed for a first run.** `/swag-scan:run` works with no config and uses the defaults, and the summary says so. `/swag-scan:config` is now for choosing your own.
+- **`.swag-scan/` is ignored for you.** The first run adds it to your clone's own `.git/info/exclude` (local only, never committed) and tells you. This is the one write outside `.swag-scan/`, and it is listed in `docs/TRANSPARENCY.md`.
+- **Clearer cost.** The summary no longer says "0 model tokens" in its header, which only ever covered the script step. A "Next:" line names which reviewers will start (and use model tokens) and which are skipped. The README has a "What a run costs" section.
+- **Unsupported languages, up front.** If none of the changed files is in TypeScript, JavaScript, Python or C#, the summary's second line says so. The README and reference now say plainly that a Dockerfile, Terraform, YAML, JSON and `appsettings.json` are not reviewed for bugs or configuration problems.
+- **Plain errors.** A step that fails unexpectedly gives one sentence and a next step instead of a script path and a raw git message.
+- **Checks before a run, and `swag-scan doctor`.** A run stops with a clear message if Node is older than 22 or git is missing. `swag-scan doctor` checks Node, git, the repository, the branch, the ticket folder and the ignore rule, and says what to do about anything that is wrong.
+- **Docs that agree.** The report location, the ignore advice, the Code Sweeper auto-fix default (off under Swag Scan) and the size gate (it does not ask during `swag-scan run`) now say the same thing everywhere.
+- **README.** A no-ticket run is the first quick-start path, tickets are described as Jira XML only with short export steps, and there is a sample report.
+- **Not in this release.** Running in CI or headless (a `claude -p` recipe, exit codes, SARIF) is its own ticket.
+
 ## 0.8.0 - SS-105
 
 Styling and phrasing improvements to the live view and the final report.

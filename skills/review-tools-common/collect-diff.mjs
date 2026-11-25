@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
+import { BASE_CANDIDATES, listBranches, missingBranchMessage, noBaseWarning } from './branches.mjs';
 import { renderCoverageLine, summarizeCoverage } from './coverage.mjs';
 import { createFileFilters } from './file-filters.mjs';
 
@@ -27,10 +28,6 @@ const requestedBaseRef = args[2] ?? config.diff.baseRef ?? 'auto';
 const autoBase = requestedBaseRef === 'auto' || requestedBaseRef === 'origin/HEAD';
 let baseRef = requestedBaseRef;
 let usedFallbackBase = false;
-const BASE_CANDIDATES = [
-  'origin/HEAD', 'origin/develop', 'develop', 'origin/test', 'test',
-  'origin/main', 'main', 'origin/master', 'master',
-];
 const maxUntrackedBytes = config.diff.untrackedMaxBytes ?? 100000;
 
 function runGit(gitArgs, options = {}) {
@@ -147,7 +144,24 @@ function pickBase(candidates) {
   return ahead.reduce((best, candidate) => (candidate.ahead < best.ahead ? candidate : best)).ref;
 }
 
+function currentBranch() {
+  try {
+    return runGit(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+  } catch {
+    return '';
+  }
+}
+
 let otherBaseCandidates = [];
+if (!autoBase && baseRef !== 'HEAD' && !refExists(baseRef)) {
+  // A repository that only has origin/main still counts as having "main". Anything else gets a list of what exists.
+  if (refExists(`origin/${baseRef}`)) {
+    baseRef = `origin/${baseRef}`;
+  } else {
+    process.stderr.write(`${missingBranchMessage(baseRef, listBranches(runGit), currentBranch())}\n`);
+    process.exit(1);
+  }
+}
 if (autoBase) {
   const candidates = baseCandidates();
   const picked = pickBase(candidates);
@@ -269,7 +283,7 @@ try {
   const scannedFiles = [...files, ...untracked.files.filter((file) => !changedPaths.has(file.path))];
   const changedCount = diffFiles.length + untracked.total;
   const untrackedScanned = scannedFiles.length - files.length;
-  const warnings = [...baseWarnings({ comparisonBase, fileCount: files.length }), ...untrackedWarnings({ branchFiles: files.length, untrackedScanned })];
+  const warnings = [...(usedFallbackBase ? [noBaseWarning(listBranches(runGit), currentBranch())] : []), ...baseWarnings({ comparisonBase, fileCount: files.length }), ...untrackedWarnings({ branchFiles: files.length, untrackedScanned })];
   const diffBytes = scannedFiles.reduce(
     (sum, file) => sum + file.changes.reduce((fileSum, change) => fileSum + Buffer.byteLength(change.text, 'utf8') + 1, 0),
     0,

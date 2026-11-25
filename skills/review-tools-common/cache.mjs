@@ -8,7 +8,7 @@
 //
 // `check` prints { hit, cacheable, key, reason, entry }. `store` records a finished run under that key.
 // Results are kept in <repo>/.swag-scan/cache/. Nothing is cached when the working tree has uncommitted changes,
-// because the cached answer could be stale. Add `.swag-scan/` to .gitignore.
+// because the cached answer could be stale. `swag-scan run` adds `.swag-scan/` to .git/info/exclude on the first run.
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';

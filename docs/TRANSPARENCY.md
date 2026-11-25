@@ -10,7 +10,7 @@ Swag Scan is meant to be read before it is trusted. This page lists every comman
 | Do the scripts use the network? | **No.** There is no `http`, `https`, `net` or `fetch` call and no URL in any script. The live view is a self-contained page that re-reads a local file. |
 | Is there telemetry? | **No.** There is no network code to send any. |
 | Does my code leave my machine? | **The scripts send nothing anywhere.** The three reviewers are Claude Code subagents, so the changed lines and nearby code they read are seen by the model your Claude Code session already uses, under your own Claude Code account and data settings. |
-| Does it change my repository? | The `/swag-scan:run` command writes only inside `.swag-scan/`. `/swag-scan:config` writes only `~/.swag-scan/settings.json`. Only the **Inspector** can edit source files, and only when auto-fix is on. The first run changes no files. |
+| Does it change my repository? | The `/swag-scan:run` command writes only inside `.swag-scan/`, with one exception: when git does not already ignore that folder, the first run adds the line `.swag-scan/` to your clone's own `.git/info/exclude` (local only, never committed) and says so. `/swag-scan:config` writes only `~/.swag-scan/settings.json`. `swag-scan doctor` writes nothing. Only the **Inspector** can edit source files, and only when auto-fix is on. The first run changes no tracked or working-tree files. |
 
 ## Commands the scripts run
 
@@ -21,6 +21,10 @@ The scripts call `git` with an argument list, not through a shell. Nothing here 
 | `git rev-parse --show-toplevel` | Find the repository root |
 | `git rev-parse HEAD`, `--short HEAD`, `--abbrev-ref HEAD` | Name the commit and branch being reviewed |
 | `git rev-parse --verify --quiet <ref>^{commit}` | Check that a base ref exists |
+| `git for-each-ref --format=%(refname) refs/heads refs/remotes/origin` | List the branches that exist, so a missing target branch can be explained |
+| `git check-ignore -q .swag-scan/run` | See whether git already ignores the tool's folder |
+| `git rev-parse --git-path info/exclude` | Find the clone's own exclude file |
+| `git --version` | Check that git is installed (the preflight and `swag-scan doctor`) |
 | `git merge-base <ref> HEAD` | Find where your branch grew from the base |
 | `git diff --no-ext-diff --unified=0 <base> --` | Read only the lines you changed |
 | `git diff --name-only -z <base> --` | Count changed files |
@@ -45,6 +49,7 @@ The scripts call `git` with an argument list, not through a shell. Nothing here 
 | Where | What | Notes |
 | --- | --- | --- |
 | `~/.swag-scan/settings.json` | Your config: ticket folder, target branch, live view, auto-fix, file size limit | Only when you run `/swag-scan:config` (or `swag-scan config set`). Outside every repository. |
+| `.git/info/exclude` | One added line, `.swag-scan/` | The only write outside `.swag-scan/` and `~/.swag-scan/`. Local to your clone and never committed. Added on the first run, only when git does not already ignore `.swag-scan/`; existing lines are kept. |
 | `.swag-scan/run/` | Scan results, `summary.json`, each agent's findings, `events.jsonl` | Replaced on every run. The event log holds counts, agent names, file names and finding ids, never code or finding text. |
 | `.swag-scan/reports/<commit>/` | `report.md`, `report.html`, `report.json` | The report you read |
 | `.swag-scan/cache/` | Stored reviews | At most 50 entries kept |

@@ -15,7 +15,7 @@ function home(context) {
 test('with no file, every setting has its documented default and the config is not set up', (context) => {
   const loaded = loadSettings({}, home(context));
   assert.equal(loaded.configured, false);
-  assert.deepEqual(loaded.values, { ticketSourcePath: '', targetBranch: 'main', liveDashboard: true, autoFix: false, maxFileLines: 1000 });
+  assert.deepEqual(loaded.values, { ticketSourcePath: '', targetBranch: 'auto', liveDashboard: true, autoFix: false, maxFileLines: 1000 });
   assert.deepEqual(loaded.values, SETTING_DEFAULTS);
 });
 
@@ -60,7 +60,7 @@ test('a value that cannot be saved changes nothing', (context) => {
   saveSettings({ maxFileLines: '700' }, env, directory);
   assert.throws(() => saveSettings({ targetBranch: 'ok', maxFileLines: 'nope' }, env, directory), /whole number/);
   assert.equal(loadSettings(env, directory).values.maxFileLines, 700);
-  assert.equal(loadSettings(env, directory).values.targetBranch, 'main');
+  assert.equal(loadSettings(env, directory).values.targetBranch, 'auto');
 });
 
 test('the older ticketFolder key still works until ticketSourcePath is saved, then it is replaced', (context) => {
@@ -82,6 +82,6 @@ test('a broken settings file reads as defaults instead of crashing', (context) =
   writeFileSync(env.SWAG_SCAN_SETTINGS, '{ not json');
   const loaded = loadSettings(env, directory);
   assert.equal(loaded.configured, false);
-  assert.equal(loaded.values.targetBranch, 'main');
-  assert.match(renderSettings(loaded), /not set up yet: run \/swag-scan:config/);
+  assert.equal(loaded.values.targetBranch, 'auto');
+  assert.match(renderSettings(loaded), /using the defaults: run \/swag-scan:config/);
 });

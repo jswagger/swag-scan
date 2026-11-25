@@ -4,24 +4,26 @@
 //
 // Usage: swag-scan.mjs run [<ticket-id>] [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>]
 //                          [--agents analyst,inspector,security-guard] [--fresh] [--json]
-//        swag-scan.mjs config [show|get <key>|set <key> <value>...|path] [--json]   (the user-level config, see settings.mjs)
+//        swag-scan.mjs config [show|get <key>|set <key> <value>...|unset targetBranch|path] [--this-repo] [--json]   (see settings.mjs)
+//        swag-scan.mjs doctor [--repo <dir>] [--json]     (checks Node, git, the base branch, the ticket folder and the ignore rule)
 //        swag-scan.mjs report [--repo <dir>] [--json]     (after the agents have saved their findings)
 //        swag-scan.mjs dashboard [--repo <dir>] [--watch] [--open]   (the live view page: .swag-scan/dashboard.html)
 //
-// `run` needs the config from /swag-scan:config. It reads targetBranch (the base), maxFileLines and autoFix from it;
-// --base and --ticket-dir stay as one-off overrides.
+// `run` works without a config (it uses the defaults) and reads targetBranch (the base), maxFileLines and autoFix from
+// the config from /swag-scan:config when there is one; --base and --ticket-dir stay as one-off overrides.
 // Results go to <repo>/.swag-scan/run/ (gitignored, replaced on every run): one JSON file per step and summary.json.
 // Exit code 0 means the scan ran (even if it found nothing); 1 means it could not run, with one plain sentence why.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { BASE_CANDIDATES, listBranches, missingBranchMessage, noBaseWarning } from './branches.mjs';
 import { checkCache } from './cache.mjs';
 import { emit, readEvents } from './events.mjs';
 import { DASHBOARD_FILE, buildState, watchDashboard, writeDashboard } from './dashboard.mjs';
 import { writeReport } from './report.mjs';
-import { loadSettings, parseSetting, renderSettings, saveSettings, SETTING_KEYS, SETUP_MESSAGE, SettingsError } from './settings.mjs';
+import { AUTO_BRANCH, loadSettings, parseSetting, renderSettings, saveRepoBranch, saveSettings, SETTING_KEYS, SettingsError, targetBranchFor } from './settings.mjs';
 import { looksLikePath } from './ticket.mjs';
 
 const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
@@ -35,10 +37,32 @@ export const AGENTS = [
   { id: 'security-guard', name: 'Security Guard', tool: 'security-auditor' },
 ];
 
+const SUPPORTED_LANGUAGES = 'TypeScript, JavaScript, Python, C#';
 const TOOL_TITLES = { 'bug-hunter': 'Bug Hunter', 'code-sweeper': 'Code Sweeper', 'security-auditor': 'Security Auditor' };
 
 /** An expected failure: its message is shown to the user as is, never with a stack trace. */
 export class PlainError extends Error {}
+
+// A step that stops with a sentence starting like this has already explained itself: the sentence is shown as is.
+const PLAIN_PREFIX = 'Swag Scan: ';
+const STEP_NAMES = {
+  'collect-diff.mjs': 'read your changes with git',
+  'check-diff-size.mjs': 'check how big your change is',
+  'gather-context.mjs': 'read the ticket and the code around your change',
+  'scan-patterns.mjs': 'scan your changes for leads',
+  'find-callers.mjs': 'look up where the changed code is used',
+  'build-packets.mjs': 'prepare what the reviewers will read',
+};
+
+/** One plain sentence and a next step in place of a script path and its raw error. */
+export function plainStepError(script, error) {
+  const last = String(error.stderr ?? error.message).trim().split('\n').filter(Boolean).at(-1) ?? '';
+  if (last.startsWith(PLAIN_PREFIX)) return last.slice(PLAIN_PREFIX.length);
+  const step = STEP_NAMES[basename(script)] ?? 'finish one of its steps';
+  const detail = last.replace(/^Error: /, '').replace(/^Failed to collect diff from \S+: /, '').replace(/^fatal: /, '');
+  return `Swag Scan could not ${step}${detail ? ` (it said: ${detail})` : ''}. Nothing was reviewed and no model tokens were spent. `
+    + 'Next step: run `swag-scan doctor` to check your setup. If that looks fine, report this at https://github.com/jswagger/swag-scan/issues.';
+}
 
 function node(script, args, { cwd, input } = {}) {
   try {
@@ -50,8 +74,7 @@ function node(script, args, { cwd, input } = {}) {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
   } catch (error) {
-    const detail = String(error.stderr ?? error.message).trim().split('\n').filter(Boolean).at(-1) ?? 'unknown error';
-    throw new PlainError(`${relative(SKILLS_DIR, script)} failed: ${detail}`);
+    throw new PlainError(plainStepError(script, error));
   }
 }
 
@@ -61,6 +84,101 @@ function git(repo, args) {
   } catch {
     return undefined;
   }
+}
+
+/** The git version line, or undefined when git is not installed. */
+function gitVersion() {
+  try {
+    return execFileSync('git', ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().replace(/^git version /, '');
+  } catch {
+    return undefined;
+  }
+}
+
+export const SUPPORTED_NODE_MAJORS = [22, 24];
+
+/** Node and git, checked before a run. A problem stops the run with one sentence; a warning is only shown. */
+export function preflight({ nodeVersion = process.versions.node, git: gitFound = gitVersion() } = {}) {
+  const major = Number(String(nodeVersion).split('.')[0]);
+  const problems = [];
+  const warnings = [];
+  if (!(major >= SUPPORTED_NODE_MAJORS[0])) {
+    problems.push(`Swag Scan needs Node 22 or 24, and this is Node ${nodeVersion}. Install Node 24 from https://nodejs.org, restart Claude Code and run it again.`);
+  } else if (!SUPPORTED_NODE_MAJORS.includes(major)) {
+    warnings.push(`Node ${nodeVersion} is not one Swag Scan is tested on (22 and 24), so it may not behave as expected.`);
+  }
+  if (!gitFound) problems.push('Swag Scan needs git, and it was not found on your PATH. Install git from https://git-scm.com, restart Claude Code and run it again.');
+  return { problems, warnings };
+}
+
+/**
+ * Keeps the tool's folder out of `git status` by adding `.swag-scan/` to this clone's own .git/info/exclude (local only,
+ * never a tracked file). Does nothing when something already ignores it. Returns true when it added the line.
+ */
+export function ensureLocalExclude(root) {
+  try {
+    if (git(root, ['check-ignore', '-q', '.swag-scan/run']) !== undefined) return false;
+    const relativePath = git(root, ['rev-parse', '--git-path', 'info/exclude']);
+    if (!relativePath) return false;
+    const path = resolve(root, relativePath);
+    mkdirSync(dirname(path), { recursive: true });
+    const current = existsSync(path) ? readFileSync(path, 'utf8') : '';
+    appendFileSync(path, `${current && !current.endsWith('\n') ? '\n' : ''}.swag-scan/\n`);
+    return true;
+  } catch {
+    return false; // a convenience: never stops a scan
+  }
+}
+
+/** `swag-scan doctor`: what a run needs, checked one by one, each with a next step when it is not right. */
+export function doctor({ repo = process.cwd() } = {}, { env = process.env, home } = {}) {
+  const checks = [];
+  const add = (status, label, detail, fix) => checks.push({ status, label, detail, ...(fix ? { fix } : {}) });
+  const environment = preflight();
+  const nodeVersion = process.versions.node;
+  if (environment.problems.some((problem) => problem.includes('Node'))) add('fail', 'Node', `Node ${nodeVersion}`, 'Install Node 24 from https://nodejs.org, then restart Claude Code.');
+  else if (environment.warnings.length) add('warn', 'Node', `Node ${nodeVersion} (tested on 22 and 24)`);
+  else add('ok', 'Node', `Node ${nodeVersion}`);
+  const version = gitVersion();
+  if (version) add('ok', 'git', `git ${version}`);
+  else add('fail', 'git', 'not found on your PATH', 'Install git from https://git-scm.com, then restart Claude Code.');
+
+  const root = version ? git(resolve(repo), ['rev-parse', '--show-toplevel']) : undefined;
+  if (!root) {
+    add('fail', 'Repository', `${resolve(repo)} is not inside a git repository`, 'Start Claude Code inside the repository you want reviewed.');
+  } else {
+    add('ok', 'Repository', root);
+    if (!git(root, ['rev-parse', '--verify', '--quiet', 'HEAD'])) add('fail', 'Commits', 'this repository has no commits yet', 'Make a first commit, then run Swag Scan.');
+    const loaded = loadSettings(env, home);
+    const runGit = (args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const exists = (ref) => git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) !== undefined;
+    const current = git(root, ['rev-parse', '--abbrev-ref', 'HEAD']) ?? '';
+    const target = targetBranchFor(loaded, root);
+    const from = target.source === 'this repository' ? ' (set for this repository)' : target.source === 'config' ? ' (from your config)' : '';
+    if (target.branch === AUTO_BRANCH) {
+      const found = BASE_CANDIDATES.filter(exists);
+      if (found.length) add('ok', 'Base branch', `auto-detect would consider: ${found.join(', ')}`);
+      else add('fail', 'Base branch', noBaseWarning(listBranches(runGit), current), 'Pick the branch your work merges into with /swag-scan:config.');
+    } else if (exists(target.branch) || exists(`origin/${target.branch}`)) {
+      add('ok', 'Base branch', `${target.branch}${from}`);
+    } else {
+      add('fail', 'Base branch', `${target.branch}${from} does not exist here`, missingBranchMessage(target.branch, listBranches(runGit), current).slice(PLAIN_PREFIX.length));
+    }
+    const folder = loaded.values.ticketSourcePath;
+    if (!folder) add('ok', 'Ticket folder', 'not set (fine: you can run without a ticket)');
+    else if (existsSync(folder)) add('ok', 'Ticket folder', folder);
+    else add('warn', 'Ticket folder', `${folder} does not exist`, 'Create the folder, or change it with /swag-scan:config. Runs without a ticket still work.');
+    if (git(root, ['check-ignore', '-q', '.swag-scan/run']) !== undefined) add('ok', 'Ignore rule', '.swag-scan/ is already ignored by git');
+    else add('ok', 'Ignore rule', '.swag-scan/ is not ignored yet; the first run adds it to .git/info/exclude (this clone only)');
+  }
+  const ok = checks.every((check) => check.status !== 'fail');
+  const mark = { ok: '✅', warn: '🟡', fail: '🔴' };
+  const text = [
+    `Swag Scan doctor: ${ok ? 'ready to run' : 'something needs fixing first'}`,
+    ...checks.map((check) => `${mark[check.status]} ${check.label}: ${check.detail}${check.fix ? `\n   Next step: ${check.fix}` : ''}`),
+    ...environment.warnings.map((warning) => `🟡 ${warning}`),
+  ].join('\n');
+  return { ok, checks, text };
 }
 
 const plural = (count, word, many = `${word}s`) => `${count} ${count === 1 ? word : many}`;
@@ -209,7 +327,11 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
 export function renderSummary(summary) {
   const lines = [];
   const base = summary.base ? `${summary.base.ref}${summary.base.autoDetected ? ' (auto-detected)' : ''}` : 'no base found';
-  lines.push(`Swag Scan: ${summary.branch ?? 'detached HEAD'} vs ${base} · report-only · ${summary.modelTokens} model tokens`);
+  lines.push(`Swag Scan: ${summary.branch ?? 'detached HEAD'} vs ${base} · report-only`);
+  if (summary.usedDefaults) lines.push('No config is saved yet, so this run used the defaults. Run /swag-scan:config to choose your own.');
+  if (summary.noSupportedLanguage) {
+    lines.push(`None of your changed files are in a language Swag Scan reviews (${SUPPORTED_LANGUAGES}), so ${summary.totalLeads ? 'only the checks on build files, workflows and secrets can find anything' : 'no reviewer will run'}.`);
+  }
   for (const agent of summary.agents) {
     const title = `${agent.name} (${TOOL_TITLES[agent.tool]})`;
     if (agent.status === 'empty') lines.push(`${title}: no changes to check. ${agent.suggestion ?? ''}`.trim());
@@ -226,6 +348,12 @@ export function renderSummary(summary) {
   const counted = summary.agents.find((agent) => agent.untrackedCount > 0);
   if (counted) lines.push(`Scanned ${plural(counted.scannedCount, 'file')}: ${counted.branchDiffCount} in the branch diff, ${counted.untrackedCount} untracked.`);
   for (const warning of new Set(summary.agents.flatMap((agent) => agent.warnings ?? []))) lines.push(`Warning: ${warning}`);
+  const starting = summary.agents.filter((agent) => agent.status === 'done' && !agent.cache?.hit && agent.leads > 0);
+  if (starting.length) {
+    const skipped = summary.agents.filter((agent) => !starting.includes(agent));
+    const names = (list) => list.map((agent) => agent.name).join(', ');
+    lines.push(`Next: ${names(starting)} will review ${starting.length === 1 ? 'its' : 'their'} leads. The scripts above used no model tokens; the reviewers do${skipped.length ? `. Skipped: ${names(skipped)} (nothing to review)` : ''}.`);
+  }
   const ticket = summary.ticket;
   if (ticket?.found) lines.push(`Ticket ${ticket.id} (from ${ticket.source}): ${plural(ticket.criteria, 'acceptance criterion', 'acceptance criteria')}${ticket.repositories.length ? `, ${plural(ticket.repositories.length, 'repository', 'repositories')}` : ''}`);
   else if (ticket?.notes?.length) lines.push(`Ticket${ticket.id ? ` ${ticket.id}` : ''}: ${ticket.notes[0].replace(/^Cannot look up \S+: /, '').split('. ')[0].replace(/\.$/, '')}.`);
@@ -246,7 +374,7 @@ function refreshDashboardPage(swagDir) {
 }
 
 /** Runs the scan. `log` receives one progress line per agent as it finishes. */
-export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents, fresh = false, settings, log = () => {}, now = () => Date.now() } = {}) {
+export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents, fresh = false, settings, usedDefaults = false, log = () => {}, now = () => Date.now() } = {}) {
   const started = now();
   const root = git(resolve(repo), ['rev-parse', '--show-toplevel']);
   if (!root) throw new PlainError(`${resolve(repo)} is not a git repository, so there is nothing to scan.`);
@@ -263,7 +391,9 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   const head = git(root, ['rev-parse', 'HEAD']);
   if (!head) throw new PlainError('This repository has no commits yet, so there is nothing to scan.');
 
-  log(`Running: ${crew.map((agent) => agent.name).join(', ')} · scripts only, report-only, no model tokens`);
+  if (ensureLocalExclude(root)) log('Added .swag-scan/ to .git/info/exclude (this clone only), so Swag Scan\'s files stay out of git status.');
+  if (usedDefaults) log('No config saved yet: using the defaults (branch auto-detected, live view on, auto-fix off). Run /swag-scan:config to choose your own.');
+  log(`Scanning with scripts: ${crew.map((agent) => agent.name).join(', ')} · report-only · this step uses no model tokens`);
   emit(runDir, { kind: 'run-started', phase: 'scan', steps: crew.length, label: 'scan' });
   refreshDashboardPage(join(root, '.swag-scan'));
   const results = [];
@@ -284,6 +414,9 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   }
 
   const first = results.find((entry) => entry.baseRef);
+  const scanned = results.filter((entry) => entry.status !== 'empty' && entry.coverage);
+  const totalLeads = results.reduce((sum, entry) => sum + (entry.leads ?? 0), 0);
+  const noSupportedLanguage = scanned.length > 0 && scanned.every((entry) => Object.keys(entry.coverage.checked ?? {}).length === 0);
   const withTicket = results.find((entry) => entry.ticket);
   const summary = {
     schemaVersion: SUMMARY_SCHEMA,
@@ -293,6 +426,9 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
     mode: 'report-only',
     modelTokens: 0,
     ...(settings ? { settings } : {}),
+    ...(usedDefaults ? { usedDefaults: true } : {}),
+    ...(noSupportedLanguage ? { noSupportedLanguage: true } : {}),
+    totalLeads,
     base: first ? { ref: first.baseRef, autoDetected: first.autoDetected } : null,
     ticket: withTicket?.ticket,
     agents: results,
@@ -301,15 +437,15 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   };
   summary.text = renderSummary(summary);
   writeFileSync(join(runDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
-  emit(runDir, { kind: 'done', phase: 'scan', count: results.reduce((sum, entry) => sum + (entry.leads ?? 0), 0), steps: crew.length });
+  emit(runDir, { kind: 'done', phase: 'scan', count: totalLeads, steps: crew.length });
   return summary;
 }
 
-const USAGE = 'Usage: swag-scan.mjs run [<ticket-id>] [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>] [--agents analyst,inspector,security-guard] [--fresh] [--json]\n       swag-scan.mjs report [--repo <dir>] [--json]\n       swag-scan.mjs dashboard [--repo <dir>] [--watch] [--open]\n       swag-scan.mjs config [show|get <key>|set <key> <value>...|path] [--json]';
+const USAGE = 'Usage: swag-scan.mjs run [<ticket-id>] [--repo <dir>] [--base <ref>] [--ticket <id-or-path>] [--ticket-dir <dir>] [--agents analyst,inspector,security-guard] [--fresh] [--json]\n       swag-scan.mjs report [--repo <dir>] [--json]\n       swag-scan.mjs dashboard [--repo <dir>] [--watch] [--open]\n       swag-scan.mjs config [show|get <key>|set <key> <value>...|unset targetBranch|path] [--this-repo] [--repo <dir>] [--json]\n       swag-scan.mjs doctor [--repo <dir>] [--json]';
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  if (!['run', 'report', 'dashboard', 'config'].includes(command)) throw new PlainError(USAGE);
+  if (!['run', 'report', 'dashboard', 'config', 'doctor'].includes(command)) throw new PlainError(USAGE);
   if (command === 'config') return parseConfigArgs(rest);
   const options = { command };
   for (let i = 0; i < rest.length; i += 1) {
@@ -336,37 +472,65 @@ function parseArgs(argv) {
 function parseConfigArgs(rest) {
   const options = { command: 'config', action: 'show', args: [] };
   const words = [];
-  for (const arg of rest) {
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
     if (arg === '--json') options.json = true;
-    else if (arg.startsWith('--')) throw new PlainError(`Unknown option ${arg}.`);
+    else if (arg === '--this-repo') options.thisRepo = true;
+    else if (arg === '--repo') {
+      if (i + 1 >= rest.length) throw new PlainError('Missing value for --repo.');
+      options.repo = rest[(i += 1)];
+    } else if (arg.startsWith('--')) throw new PlainError(`Unknown option ${arg}.`);
     else words.push(arg);
   }
   if (words.length) {
     options.action = words[0];
     options.args = words.slice(1);
   }
-  if (!['show', 'get', 'set', 'path'].includes(options.action)) throw new PlainError(`Unknown config action "${options.action}". Use show, get <key>, set <key> <value>, or path.`);
+  if (!['show', 'get', 'set', 'unset', 'path'].includes(options.action)) throw new PlainError(`Unknown config action "${options.action}". Use show, get <key>, set <key> <value>, unset targetBranch --this-repo, or path.`);
   return options;
 }
 
 /**
- * Loads the user's config for a run. Without a saved config the scan does not start (and costs nothing). The branch to
- * compare against comes from `targetBranch`, unless --base is given. Returns the options runScan needs.
+ * Loads the user's config for a run. Without a saved config the scan still runs, on the defaults (`usedDefaults` says so),
+ * so a new user can see a report before any setup. The branch to compare against is, in order: --base, this repository's
+ * own override, the config's `targetBranch`, then "auto" (detect origin/HEAD, develop, main or master).
  */
 export function prepareRun(options, { env = process.env, home } = {}) {
   const loaded = loadSettings(env, home);
-  if (!loaded.configured) throw new PlainError(SETUP_MESSAGE);
-  const { targetBranch, liveDashboard, autoFix, maxFileLines } = loaded.values;
-  return { ...options, base: options.base ?? targetBranch, settings: { targetBranch, liveDashboard, autoFix, maxFileLines } };
+  const root = git(resolve(options.repo ?? process.cwd()), ['rev-parse', '--show-toplevel']);
+  const target = targetBranchFor(loaded, root);
+  const { liveDashboard, autoFix, maxFileLines } = loaded.values;
+  return { ...options, base: options.base ?? target.branch, usedDefaults: !loaded.configured, settings: { targetBranch: target.branch, liveDashboard, autoFix, maxFileLines } };
 }
 
 /** `swag-scan config ...`: show, read one value, or save values. Returns the text to print. */
-export function configCommand({ action, args, json }, { env = process.env, home } = {}) {
+export function configCommand({ action, args, json, thisRepo, repo }, { env = process.env, home } = {}) {
   const loaded = loadSettings(env, home);
+  const repoRoot = () => {
+    const root = git(resolve(repo ?? process.cwd()), ['rev-parse', '--show-toplevel']);
+    if (!root) throw new PlainError(`${resolve(repo ?? process.cwd())} is not a git repository, so there is no repository to set a branch for. Start Claude Code inside the repository.`);
+    return root;
+  };
   if (action === 'path') return loaded.path;
   if (action === 'get') {
     if (args.length !== 1 || !SETTING_KEYS.includes(args[0])) throw new PlainError(`Usage: config get <key>. Keys: ${SETTING_KEYS.join(', ')}.`);
+    if (thisRepo && args[0] === 'targetBranch') return targetBranchFor(loaded, repoRoot()).branch;
     return String(loaded.values[args[0]]);
+  }
+  if (action === 'unset') {
+    if (!thisRepo || args.length !== 1 || args[0] !== 'targetBranch') throw new PlainError('Usage: config unset targetBranch --this-repo');
+    const saved = saveRepoBranch(repoRoot(), '', env, home);
+    return `Removed the target branch for this repository. It now uses ${saved.values.targetBranch}.`;
+  }
+  if (action === 'set' && thisRepo) {
+    if (args.length !== 2 || args[0] !== 'targetBranch') throw new PlainError('Usage: config set targetBranch <branch> --this-repo (only the target branch can be set for one repository).');
+    try {
+      const root = repoRoot();
+      const saved = saveRepoBranch(root, args[1], env, home);
+      return `Saved for ${root}: compare against ${targetBranchFor(saved, root).branch}.\nOther repositories keep using ${saved.values.targetBranch}.`;
+    } catch (error) {
+      throw error instanceof SettingsError ? new PlainError(error.message) : error;
+    }
   }
   if (action === 'set') {
     if (!args.length || args.length % 2) throw new PlainError(`Usage: config set <key> <value> [<key> <value> ...]. Keys: ${SETTING_KEYS.join(', ')}.`);
@@ -381,7 +545,11 @@ export function configCommand({ action, args, json }, { env = process.env, home 
       throw error instanceof SettingsError ? new PlainError(error.message) : error;
     }
   }
-  return json ? JSON.stringify({ path: loaded.path, configured: loaded.configured, ...loaded.values }, null, 2) : renderSettings(loaded);
+  const root = git(resolve(repo ?? process.cwd()), ['rev-parse', '--show-toplevel']);
+  const override = root ? loaded.repoBranches[resolve(root)] : undefined;
+  return json
+    ? JSON.stringify({ path: loaded.path, configured: loaded.configured, ...loaded.values, ...(override ? { repoTargetBranch: override } : {}) }, null, 2)
+    : renderSettings(loaded, override);
 }
 
 /** Builds the consolidated report from the run folder. Writes report.md and report.json and returns the text. */
@@ -426,7 +594,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const { command, json, ...options } = parseArgs(process.argv.slice(2));
     if (command === 'config') {
       process.stdout.write(`${configCommand({ ...options, json })}\n`);
+    } else if (command === 'doctor') {
+      const result = doctor(options);
+      process.stdout.write(json ? `${JSON.stringify(result, null, 2)}\n` : `${result.text}\n`);
+      process.exitCode = result.ok ? 0 : 1;
     } else if (command === 'run') {
+      const environment = preflight();
+      if (environment.problems.length) throw new PlainError(environment.problems.join(' '));
+      for (const warning of environment.warnings) process.stderr.write(`Warning: ${warning}\n`);
       const summary = runScan({ ...prepareRun(options), log: (line) => process.stderr.write(`${line}\n`) });
       process.stdout.write(json ? `${JSON.stringify(summary, null, 2)}\n` : `${summary.text}\n`);
     } else if (command === 'dashboard') {
