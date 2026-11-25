@@ -62,9 +62,10 @@ test('runs every agent in a fixed order, report-only, with no model tokens', (co
   const summary = runScan({ repo, log: (line) => log.push(line) });
 
   assert.deepEqual(summary.agents.map((agent) => agent.id), AGENTS.map((agent) => agent.id));
-  assert.match(log[0], /Running: Analyst, Inspector, Security Guard · scripts only, report-only, no model tokens/);
-  assert.match(log[1], /^\[1\/3\] Analyst · Bug Hunter: \d+ leads? \(/);
-  assert.match(log[3], /^\[3\/3\] Security Guard · Security Auditor/);
+  assert.match(log.find((line) => line.startsWith('Scanning')), /Scanning with scripts: Analyst, Inspector, Security Guard · report-only · this step uses no model tokens/);
+  const steps = log.filter((line) => /^\[\d\/3\]/.test(line));
+  assert.match(steps[0], /^\[1\/3\] Analyst · Bug Hunter: \d+ leads? \(/);
+  assert.match(steps[2], /^\[3\/3\] Security Guard · Security Auditor/);
   assert.equal(summary.modelTokens, 0);
   assert.equal(summary.mode, 'report-only');
   assert.equal(summary.base.ref, 'main');
@@ -217,19 +218,25 @@ test('an explicit --ticket ID that cannot be found also stops the run, but a bra
   assert.doesNotThrow(() => runScan({ repo, ticketDir: join(repo, 'nowhere') }));
 });
 
-test('run asks for the config first, and starts nothing', (context) => {
+test('run works with no config at all, on the defaults, and says so', (context) => {
   const repo = fixture(context);
   const empty = join(mkdtempSync(join(tmpdir(), 'swag-noconfig-')), 'settings.json');
   context.after(() => rmSync(join(empty, '..'), { recursive: true, force: true }));
-  const env = { ...process.env, SWAG_SCAN_SETTINGS: empty };
-  const result = spawnSync(process.execPath, [script, 'run', 'PROJ-123', '--repo', repo], { encoding: 'utf8', env });
-  assert.equal(result.status, 1);
-  assert.equal(result.stderr, 'Please set up your config file first. Run /swag-scan:config to get started.\n');
-  assert.equal(existsSync(join(repo, '.swag-scan')), false, 'no scan folder is created');
+  const env = { ...process.env, SWAG_SCAN_SETTINGS: empty, SWAG_SCAN_TICKET_DIR: '' };
+  const result = spawnSync(process.execPath, [script, 'run', '--repo', repo, '--json'], { encoding: 'utf8', env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /No config saved yet: using the defaults/);
+  const summary = JSON.parse(result.stdout);
+  assert.equal(summary.usedDefaults, true);
+  assert.equal(summary.base.ref, 'main');
+  assert.equal(summary.base.autoDetected, true, 'with no config the branch is detected, not assumed');
+  assert.match(summary.text, /No config is saved yet, so this run used the defaults/);
+  assert.equal(existsSync(empty), false, 'a run never writes the config');
 
-  // A file with only the older ticketFolder key is not a finished setup either.
+  // A file with only the older ticketFolder key is not a finished setup either, and still runs.
   writeFileSync(empty, JSON.stringify({ ticketFolder: '/tickets' }));
-  assert.throws(() => prepareRun({}, { env }), /Please set up your config file first/);
+  assert.equal(prepareRun({}, { env }).usedDefaults, true);
+  assert.equal(prepareRun({}, { env }).base, 'auto');
 });
 
 test('prepareRun takes the base branch from the config, and --base still overrides it', (context) => {

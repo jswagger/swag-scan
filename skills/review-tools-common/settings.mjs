@@ -2,12 +2,16 @@
 // Location: $SWAG_SCAN_SETTINGS, else ~/.swag-scan/settings.json. Nothing here touches the network.
 //
 //   ticketSourcePath  folder that holds Jira XML exports named <ID>.xml (empty means: no ticket folder)
-//   targetBranch      the branch a change is compared against (default "main")
+//   targetBranch      the branch a change is compared against (default "auto": detect origin/HEAD, develop, main or master)
 //   liveDashboard     open the live view while a scan runs (default true)
 //   autoFix           let the Inspector fix clear, low-risk cleanup items (default false)
 //   maxFileLines      flag a changed file that is longer than this many lines (default 1000)
 //
 // `ticketFolder` is the older name of `ticketSourcePath`. It is still read when the new key is not set.
+//
+// One more thing lives in the file but is not one of the five settings: `repoTargetBranches`, a map from a repository's
+// folder to the branch to compare against in that repository only. It wins over `targetBranch` and is set with
+// `swag-scan config set targetBranch <branch> --this-repo`.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -17,13 +21,14 @@ export const SETTING_KEYS = ['ticketSourcePath', 'targetBranch', 'liveDashboard'
 
 export const SETTING_DEFAULTS = Object.freeze({
   ticketSourcePath: '',
-  targetBranch: 'main',
+  targetBranch: 'auto',
   liveDashboard: true,
   autoFix: false,
   maxFileLines: 1000,
 });
 
-export const SETUP_MESSAGE = 'Please set up your config file first. Run /swag-scan:config to get started.';
+/** The value of `targetBranch` that means "work it out from the repository". */
+export const AUTO_BRANCH = 'auto';
 
 /** A setting the user gave that cannot be used. The message is shown as is. */
 export class SettingsError extends Error {}
@@ -47,7 +52,7 @@ export function parseSetting(key, text) {
   const value = typeof text === 'string' ? text.trim() : text;
   if (key === 'ticketSourcePath' || key === 'targetBranch') {
     if (typeof value !== 'string') throw new SettingsError(`${key} must be text.`);
-    if (key === 'targetBranch' && !value) throw new SettingsError('targetBranch cannot be empty. Use main, or the branch your changes are compared against.');
+    if (key === 'targetBranch' && !value) throw new SettingsError('targetBranch cannot be empty. Use auto, or the branch your changes are compared against.');
     if (key === 'targetBranch' && (value.startsWith('-') || /\s/.test(value))) throw new SettingsError(`"${value}" is not a branch name Swag Scan can use.`);
     return value;
   }
@@ -84,7 +89,44 @@ export function loadSettings(env = process.env, home = homedir()) {
     }
   }
   const configured = exists && SETTING_KEYS.every((key) => raw[key] !== undefined);
-  return { path, exists, configured, values };
+  const repoBranches = {};
+  if (raw.repoTargetBranches && typeof raw.repoTargetBranches === 'object' && !Array.isArray(raw.repoTargetBranches)) {
+    for (const [repo, branch] of Object.entries(raw.repoTargetBranches)) {
+      try {
+        repoBranches[repo] = parseSetting('targetBranch', branch);
+      } catch {
+        // a branch name that cannot be used is ignored
+      }
+    }
+  }
+  return { path, exists, configured, values, repoBranches };
+}
+
+const repoKey = (repo) => resolve(repo);
+
+/**
+ * The branch to compare against for one repository, and where it came from: this repository's own override, the config,
+ * or "auto". An explicit `--base` is handled by the caller and wins over all of these.
+ */
+export function targetBranchFor(loaded, repo) {
+  const override = repo ? loaded.repoBranches?.[repoKey(repo)] : undefined;
+  if (override) return { branch: override, source: 'this repository' };
+  const { targetBranch } = loaded.values;
+  return { branch: targetBranch, source: targetBranch === AUTO_BRANCH ? 'auto' : 'config' };
+}
+
+/** Saves (or, with an empty branch, removes) the target branch for one repository. Every other key in the file is kept. */
+export function saveRepoBranch(repo, branch, env = process.env, home = homedir()) {
+  const path = settingsPath(env, home);
+  const { raw } = readRaw(path);
+  const map = raw.repoTargetBranches && typeof raw.repoTargetBranches === 'object' && !Array.isArray(raw.repoTargetBranches) ? { ...raw.repoTargetBranches } : {};
+  if (branch === undefined || branch === '') delete map[repoKey(repo)];
+  else map[repoKey(repo)] = parseSetting('targetBranch', branch);
+  const next = { ...raw, repoTargetBranches: map };
+  if (!Object.keys(map).length) delete next.repoTargetBranches;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`);
+  return loadSettings(env, home);
 }
 
 /**
@@ -110,10 +152,15 @@ export function saveSettings(updates, env = process.env, home = homedir()) {
 }
 
 /** The settings as short text lines, for `swag-scan config show`. */
-export function renderSettings({ path, configured, values }) {
-  const shown = (key) => (key === 'ticketSourcePath' && !values[key] ? '(not set)' : String(values[key]));
+export function renderSettings({ path, configured, values }, repoOverride) {
+  const shown = (key) => {
+    if (key === 'ticketSourcePath' && !values[key]) return '(not set)';
+    if (key === 'targetBranch' && values[key] === AUTO_BRANCH) return 'auto (detects origin/HEAD, develop, main or master)';
+    return String(values[key]);
+  };
   return [
-    `Swag Scan config: ${path}${configured ? '' : ' (not set up yet: run /swag-scan:config)'}`,
+    `Swag Scan config: ${path}${configured ? '' : ' (using the defaults: run /swag-scan:config to choose your own)'}`,
     ...SETTING_KEYS.map((key) => `  ${key}: ${shown(key)}`),
+    ...(repoOverride ? [`  targetBranch for this repository: ${repoOverride}`] : []),
   ].join('\n');
 }

@@ -7,9 +7,9 @@ allowed-tools: Bash(swag-scan *)
 
 # Swag Scan
 
-Run the whole review for the current branch. Do not ask the user anything: the settings come from the config that `/swag-scan:config` saved, and the arguments given are all that is typed. The usual call is `/swag-scan:run your_ticket_Id`. The first run changes no files.
+Run the whole review for the current branch. Do not ask the user anything: the settings come from the config that `/swag-scan:config` saved, and the arguments given are all that is typed. `/swag-scan:run` on its own is a normal run with no ticket; `/swag-scan:run your_ticket_Id` adds a Jira ticket's acceptance criteria as context. The first run changes no files in the repository, apart from adding `.swag-scan/` to the clone's own `.git/info/exclude` so the tool's folder stays out of `git status`.
 
-## 0. Check the config, then the live view
+## 0. Read the config, then the live view
 
 Before anything else, read the config:
 
@@ -17,9 +17,9 @@ Before anything else, read the config:
 swag-scan config show --json
 ```
 
-If `configured` is `false`, say exactly: "Please set up your config file first. Run /swag-scan:config to get started." Then stop. Do not start the live view or the scan.
+A missing config is fine: if `configured` is `false`, carry on. The run uses the defaults (it detects the branch to compare against, opens the live view, leaves auto-fix off) and its summary says so. Do not stop and do not send the user to `/swag-scan:config` first.
 
-Otherwise the config decides the rest: the branch to compare against is `targetBranch`, the ticket folder is `ticketSourcePath`, and the live view follows `liveDashboard`. Nobody passes those as flags.
+The values decide the rest: the branch to compare against is `repoTargetBranch` if it is there, otherwise `targetBranch` (`auto` means the scan detects it), the ticket folder is `ticketSourcePath`, and the live view follows `liveDashboard`. Nobody passes those as flags.
 
 If `liveDashboard` is `false`, skip the live view: never start it and never open a browser. If it is `true`, start the live view in the background (do not wait for it):
 
@@ -37,11 +37,15 @@ Run exactly one command, in the repository root. `$ARGUMENTS` is what the user t
 swag-scan run [ticket-id] [other arguments]
 ```
 
-It prints one progress line per agent, then a short summary, and saves the results in `.swag-scan/run/`. Show the user the summary as is. If the command fails, show its one-sentence message and stop.
+It prints one progress line per agent, then a short summary, and saves the results in `.swag-scan/run/`. Show the user the summary as is. If the command fails, show its message as is and stop: it already says what to do next (for example the branches it found, or `swag-scan doctor`). Do not add the script's name or a stack trace.
 
 ## 2. Decide who reviews
 
-Read `.swag-scan/run/summary.json`. For each agent in `agents`:
+Read `.swag-scan/run/summary.json`. The summary you just showed already says who starts next (its "Next:" line) and that this is the step that uses model tokens, so do not repeat it.
+
+If `noSupportedLanguage` is `true`, the summary's second line has already said that none of the changed files are in a supported language (TypeScript, JavaScript, Python, C#). Do not explain it again. Agents with `leads: 0` do not start, so often nothing does.
+
+For each agent in `agents`:
 
 - `status: "empty"`: nothing to check. Say so, and show the user the agent's `suggestion` text as written (it asks them to check the checked-out branch and the target branch in their config). Do not start the agent.
 - `cache.hit: true`: this commit was already reviewed. Point to `cache.reports` and `cache.summary`. Do not start the agent.
