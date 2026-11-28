@@ -2,7 +2,7 @@
 
 Back to the [README](../README.md). For what Swag Scan runs, reads and writes, see [TRANSPARENCY.md](TRANSPARENCY.md).
 
-Contents: [Windows and the VS Code extension](#windows-and-the-vs-code-extension) · [GitHub Copilot](#github-copilot-experimental-not-part-of-the-plugin) · [Findings format](#findings-format) · [Event log](#event-log) · [Live view](#live-view-dashboard) · [Run everything at once](#run-everything-at-once) · [Bug Hunter](#bug-hunter) · [Ticket files](#ticket-files) · [Code Sweeper](#code-sweeper) · [Security Auditor](#security-auditor) · [Model roles](#model-roles) · [Tests](#tests)
+Contents: [Windows and the VS Code extension](#windows-and-the-vs-code-extension) · [GitHub Copilot](#github-copilot-experimental-not-part-of-the-plugin) · [Findings format](#findings-format) · [Event log](#event-log) · [Live view](#live-view-dashboard) · [Run everything at once](#run-everything-at-once) · [Bug Hunter](#bug-hunter) · [Ticket files](#ticket-files) · [Code Sweeper](#code-sweeper) · [Test Tailor](#test-tailor) · [Security Auditor](#security-auditor) · [Model roles](#model-roles) · [Tests](#tests)
 
 ## Windows and the VS Code extension
 
@@ -186,16 +186,41 @@ Bug Hunter reads a ticket to understand what the change is for. It needs no conf
 
 ## Code Sweeper
 
-Checks changed code for long lines and functions, nested conditionals, heavy boolean logic, long comments, duplication, loose types, oversized files, and weak tests (`SWEEP-101` to `SWEEP-112`).
+Checks changed code for long lines and functions, nested conditionals, heavy boolean logic, long comments, duplication, loose types, and oversized files (`SWEEP-101` to `SWEEP-107`, `SWEEP-111` and `SWEEP-112`). Test quality moved to [Test Tailor](#test-tailor) in 0.10.0, so `SWEEP-108` to `SWEEP-110` and the `tests.removeLowValue` setting no longer exist.
 
 Under Swag Scan, auto-fix is **off** by default: it follows the `autoFix` setting in your config, which replaces `autoFix.enabled` below for runs that Swag Scan starts. The `true` default in the table below applies only when the Code Sweeper runs on its own. Dusty findings are never auto-fixed, and test removal stays off until you set `tests.removeLowValue` in `config.json`.
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
 | `autoFix.enabled` | Fix clear, low-risk 🔴 findings when the Code Sweeper runs on its own (`--no-fix` overrides per run; Swag Scan's `autoFix` setting replaces it) | `true` |
-| `tests.removeLowValue` | Allow removing low-value tests | `false` |
-| `scan.exclude` / `scan.testFiles.patterns` | Files skipped, and paths treated as tests | see config |
+| `scan.exclude` / `scan.testFiles.patterns` | Files skipped, and paths treated as tests (a long test title line is not flagged) | see config |
 | `scan.thresholds` | Review heuristics, not hard style rules | see config |
+
+## Test Tailor
+
+The Inspector's second tool. It judges the long-term value of the unit tests a change **adds or edits**, and recommends removing or condensing the ones that are low value. It is report-only: it never edits or deletes a test, whatever the auto-fix setting is. It reads Python (`pytest`, `unittest`), JavaScript and TypeScript tests. Other test files are listed as Unchecked, and C# tests are not judged yet.
+
+A test the diff did not touch is never judged. A new test is compared with every test in its file, so a copy of an old test is found.
+
+Every touched test is placed in one bucket:
+
+- **🔴 Excessive (Redundant / Bloat):** duplicate test cases, copy-pasted fixtures, tests that overlap existing coverage.
+- **🟡 Loose (Low Value):** tests that pass trivially, lack meaningful assertions, or carry large unnecessary setup.
+- **🟢 Perfect Fit (High Value):** sharp, focused tests with robust assertions on the new code paths.
+
+| Rule | Bucket | Meaning |
+| --- | --- | --- |
+| `TT-101` | 🟡 | The test has no assertion |
+| `TT-102` | 🟡 | Every assertion only checks that a value exists or is truthy |
+| `TT-103` | 🟡 | Long setup before the first assertion (`scan.thresholds.maxSetupLines`, default 15) |
+| `TT-104` | 🟡 | A very large `beforeEach` or `setUp` hook (`maxHookLines`, default 25) |
+| `TT-105` | 🔴 | Near-identical sibling tests that could be one table-driven test |
+| `TT-106` | 🔴 | The same fixture copy-pasted in a test file (`minDuplicateLiteralLines`, default 3) |
+| `TT-107` | 🟡 | An assertion replaced by a weaker one in the same edit |
+| `TT-108` | hint | The test mentions a ticket, so it may only verify that ticket's work. The Inspector decides. |
+| `TT-109` | 🟡 | The test file mocks the module it tests |
+
+Deleted assertions and disabled tests are Bug Hunter's (`REMOVED_TEST_ASSERTION`, `TEST_DISABLED`) and are not repeated. Settings are in `skills/test-tailor/config.json` (`scan.exclude`, `scan.testFiles.patterns`, `scan.thresholds`).
 
 ## Security Auditor
 
@@ -315,6 +340,7 @@ Both Node 22 and 24 run in CI. No third-party dependencies.
 node --test \
   "skills/bug-hunter/test/*.test.mjs" \
   "skills/code-sweeper/test/*.test.mjs" \
+  "skills/test-tailor/test/*.test.mjs" \
   "skills/security-auditor/test/*.test.mjs" \
   "skills/review-tools-common/test/*.test.mjs"
 ```

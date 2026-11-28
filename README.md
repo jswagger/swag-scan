@@ -71,7 +71,7 @@ This is the report format, made by the report script from a demo repository. The
 | Reviewer | Asks | Built on | Can edit files? |
 | --- | --- | --- | --- |
 | **Analyst** | Does it work, and did it break anything? | Bug Hunter | No |
-| **Inspector** | Was it built properly, with no loose ends? | Code Sweeper | Only with auto-fix on |
+| **Inspector** | Was it built properly, with no loose ends, and do its tests earn their place? | Code Sweeper and Test Tailor | Only with auto-fix on, and never a test |
 | **Security Guard** | Is it safe to ship? | Security Auditor | No |
 
 ## Built to be trusted

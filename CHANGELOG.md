@@ -2,6 +2,20 @@
 
 Swag Scan follows [semantic versioning](https://semver.org). It is in beta, so it stays below 1.0.0: a new feature or a change that renames or removes something raises the minor number (0.1.0 to 0.2.0), and a fix, docs or chore change raises the patch number (0.1.0 to 0.1.1). The version lives in `.claude-plugin/plugin.json`, and every pull request raises it and adds an entry here, newest first.
 
+## 0.10.0 - SS-108
+
+Test Tailor: a new tool that judges whether the unit tests in your change are worth keeping.
+
+- **Test Tailor joins the Inspector.** The Inspector now carries two tools, Code Sweeper and Test Tailor, and reviews both sets of leads in one run. The summary, the live view and the report name both, and the step count for the Inspector covers both tools.
+- **Three buckets for tests.** 🔴 Excessive (duplicate cases, copy-pasted fixtures, overlap), 🟡 Loose (no real assertion, trivial assertions, big unnecessary setup) and 🟢 Perfect Fit (sharp, focused, robust assertions). Each 🔴 or 🟡 test gets a recommendation: remove it, condense it into another, or sharpen it.
+- **Only tests you added or edited.** A test your branch did not touch is never judged. A new test is compared with the tests already in its file, so a copy of an old one is found.
+- **Ticket-specific tests are flagged.** A test that mentions a ticket, or only proves one ticket's work, is raised as a removal candidate once the ticket ships.
+- **Python, JavaScript and TypeScript.** `pytest` and `unittest` tests, and `jest`, `vitest`, `mocha` and `node:test` tests. C# tests are listed as not judged yet.
+- **Extra leads from the outside review.** A test file that mocks the module it tests, and an assertion swapped for a weaker one in the same edit, are now leads. Deleted assertions and skipped tests were already Bug Hunter leads, so they are not repeated.
+- **Report only.** Test Tailor never edits or deletes a test, even with auto-fix on.
+- **Moved out of Code Sweeper.** Test analysis is gone from Code Sweeper: `SWEEP-108`, `SWEEP-109` and `SWEEP-110` no longer exist, and neither does the `tests.removeLowValue` setting in its `config.json`. If you set that key, it is now ignored. Test Tailor's rules are `TT-101` to `TT-109` (see the reference).
+- **Not in this release.** Mutation testing (for example Stryker) would need a third-party dependency, so it is not included. C# test support is its own ticket.
+
 ## 0.9.0 - SS-109
 
 User experience improvements, mostly for a first run in a new repository.
