@@ -1,6 +1,6 @@
 ---
 name: code-sweeper
-description: Review code changes and pull request diffs for clean-code issues, unnecessary complexity, duplication, verbose comments, and low-value tests. Use before creating or reviewing a pull request.
+description: Review code changes and pull request diffs for clean-code issues, unnecessary complexity, duplication, and verbose comments. Use before creating or reviewing a pull request.
 argument-hint: Optional base ref (for example origin/main) and/or --no-fix
 ---
 
@@ -11,7 +11,7 @@ Review additions and revisions for adherence to clean coding practices. A script
 ## Scope
 
 - A focused review of the change, not a repository-wide style audit.
-- Not for bugs (use Bug Hunter) or vulnerabilities (use Security Auditor).
+- Not for bugs (use Bug Hunter), vulnerabilities (use Security Auditor) or the long-term value of tests (use Test Tailor).
 - Do not clean up or refactor code the diff did not touch.
 
 ## Configuration
@@ -19,9 +19,8 @@ Review additions and revisions for adherence to clean coding practices. A script
 Read [config.json](./config.json) first.
 
 - `autoFix.enabled` (default `false`): fix clear, low-risk 🔴 Unclean findings. When Swag Scan runs you, the user's `autoFix` setting from `/swag-scan:config` (saved in `.swag-scan/run/summary.json` under `settings.autoFix`) decides instead of this value. `--no-fix` or `dry-run` disables all edits for this run without changing the config.
-- `tests.removeLowValue` (default `false`): when `false`, only suggest test removals. When `true`, remove a test only if its lack of long-term value is clear from the test and its directly related behavior. Never delete a test because of a scanner match alone.
 - `scan.exclude`: patterns omitted during collection and scanning. Defaults cover generated JS/TS artifacts and common prose and data files (`.txt`, `.json`, CSV, XML, YAML, TOML, databases). Adjust them when those files are part of the review.
-- `scan.testFiles.patterns`: paths treated as tests for the test-value review.
+- `scan.testFiles.patterns`: paths treated as tests, so a long `it('...')` title line is not flagged. Whether a test is worth keeping is Test Tailor's job, not this tool's.
 - `scan.thresholds`: review heuristics, not hard style rules. A long function that already existed is reported only when `minFunctionChangeLines` (default 20) of its lines were added or its first line is new, and a long file only when it is new, just crossed `maxFileLines`, or grew by `minFileGrowthLines` (default 50). When Swag Scan runs the scan, the user's `maxFileLines` setting (default 1000) replaces the value here. This keeps pre-existing size out of the way of the change under review.
 
 ## Procedure
@@ -43,7 +42,6 @@ node "$TOOLS/review-tools-common/collect-diff.mjs" --config "$CFG" [base-ref] \
    - **DRY:** repeated logic that can sensibly share a helper. Check directly relevant call sites for reuse; don't abstract one-off code.
    - **Simplicity:** unnecessary branches, indirection, state, nesting, or cleverness.
    - **Comments:** comments that narrate obvious code or repeat outdated behavior. Keep comments that explain intent, constraints, or non-obvious decisions. Report commented-out code and stale `TODO`/`FIXME` notes the diff adds as 🟡 Dusty; never auto-fix them.
-   - **Tests:** whether added or changed tests verify meaningful behavior and add distinct coverage. Prefer recommending removal unless `tests.removeLowValue` is enabled and the test is plainly obsolete or redundant.
 4. **Keep related-code inspection narrow.** Start with changed lines and their immediate context. Open another file only for a concrete reuse or behavior question.
 5. **Auto-fix** only when auto-fix is on (`settings.autoFix` in `.swag-scan/run/summary.json` when Swag Scan ran the scan, else `autoFix.enabled`) and `--no-fix`/`dry-run` was not given. For each 🔴 finding inside a function:
    1. Was the function new in this diff? If so, it is eligible.

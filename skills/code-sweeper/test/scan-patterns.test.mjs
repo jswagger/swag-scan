@@ -19,7 +19,7 @@ function scan(files, args = []) {
   return { ...JSON.parse(result.stdout), stderr: result.stderr };
 }
 
-test('Python tests and complexity patterns include top-level tests and long functions', (context) => {
+test('complexity patterns apply to Python test files and long Python functions', (context) => {
   const directory = mkdtempSync(join(tmpdir(), 'code-sweeper-'));
   context.after(() => rmSync(directory, { recursive: true, force: true }));
 
@@ -37,7 +37,7 @@ test('Python tests and complexity patterns include top-level tests and long func
     },
   ]);
 
-  assert(report.changedTests.some((file) => file.path === 'test/test_api.py'));
+  assert.equal('changedTests' in report, false, 'which tests changed is Test Tailor\'s business now');
   assert(report.candidates.some((candidate) => candidate.ruleId === 'SWEEP-103'));
   assert(report.candidates.some((candidate) => candidate.ruleId === 'SWEEP-102'));
   assert(report.candidates.some((candidate) => candidate.ruleId === 'SWEEP-106' && candidate.path === path));
@@ -227,7 +227,7 @@ test('SWEEP-107 detects generic any, type assertions, and specific-to-any loosen
   assert(candidates.some((candidate) => candidate.signal === 'type-assertion' && candidate.priority === 'lower'));
 });
 
-test('test heuristics flag trivial assertions, repeated any fixtures, and sibling test shapes', (context) => {
+test('test quality is left to Test Tailor: trivial assertions, repeated fixtures and sibling test shapes are not reported', (context) => {
   const directory = mkdtempSync(join(tmpdir(), 'code-sweeper-'));
   context.after(() => rmSync(directory, { recursive: true, force: true }));
 
@@ -265,13 +265,9 @@ test('test heuristics flag trivial assertions, repeated any fixtures, and siblin
   }]);
   const candidates = report.candidates.filter((candidate) => candidate.path === path);
 
-  assert.equal(candidates.filter((candidate) => candidate.ruleId === 'SWEEP-108').length, 2);
-  const duplicateFixtures = candidates.filter((candidate) => candidate.ruleId === 'SWEEP-109');
-  assert.equal(duplicateFixtures.length, 1);
-  assert.equal(duplicateFixtures[0].occurrenceCount, 2);
-  const tableDriven = candidates.find((candidate) => candidate.ruleId === 'SWEEP-110');
-  assert.equal(tableDriven?.occurrenceCount, 3);
-  assert.match(tableDriven.description, /table-driven/);
+  for (const retired of ['SWEEP-108', 'SWEEP-109', 'SWEEP-110']) {
+    assert.equal(candidates.some((candidate) => candidate.ruleId === retired), false, `${retired} moved to Test Tailor`);
+  }
   assert.equal(candidates.some((candidate) => candidate.ruleId === 'SWEEP-105'), false);
   assert.equal(candidates.some((candidate) => candidate.ruleId === 'SWEEP-101'), false);
 });

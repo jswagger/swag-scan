@@ -24,9 +24,11 @@ export const RULE_CATALOG = {
     { id: 'SWEEP-101' }, { id: 'SWEEP-102' }, { id: 'SWEEP-103' }, { id: 'SWEEP-104' }, { id: 'SWEEP-105' },
     { id: 'SWEEP-106', languages: ['Python'] },
     { id: 'SWEEP-107', languages: JS_TS },
-    { id: 'SWEEP-108' }, { id: 'SWEEP-109' }, { id: 'SWEEP-110' }, { id: 'SWEEP-111' },
+    { id: 'SWEEP-111' },
     { id: 'SWEEP-112', languages: JS_TS },
   ],
+  'test-tailor': ['TT-101', 'TT-102', 'TT-103', 'TT-104', 'TT-105', 'TT-106', 'TT-107', 'TT-108', 'TT-109']
+    .map((id) => ({ id, languages: ['Python', ...JS_TS] })),
 };
 
 /** Languages the scan actually read for this agent: the keys of `coverage.checked` ("C#", "Python", ...). */

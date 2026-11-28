@@ -32,7 +32,7 @@ const SPECS = {
   },
   inspector: {
     role: 'code quality: is the code clean, tidy and focused',
-    description: 'Swag Scan Inspector. Judges code quality by reviewing Code Sweeper leads: long or nested code, duplication, dead code, weak tests. Use after the swag-scan command has produced leads.',
+    description: 'Swag Scan Inspector. Judges code quality by reviewing Code Sweeper leads (long or nested code, duplication, dead code) and Test Tailor leads (redundant, loose or ticket-specific tests). Use after the swag-scan command has produced leads.',
     tools: ['Read', 'Grep', 'Glob', 'Bash', 'Edit'],
     disallowedTools: ['Write'],
     color: 'orange',
@@ -50,12 +50,13 @@ const SPECS = {
 
 const MODEL = 'sonnet';
 const MAX_TURNS = 50;
-const TOOL_TITLES = { 'bug-hunter': 'Bug Hunter', 'code-sweeper': 'Code Sweeper', 'security-auditor': 'Security Auditor' };
+const TOOL_TITLES = { 'bug-hunter': 'Bug Hunter', 'code-sweeper': 'Code Sweeper', 'test-tailor': 'Test Tailor', 'security-auditor': 'Security Auditor' };
 
 /** What the orchestrator saved for each tool in .swag-scan/run/ (see skills/review-tools-common/swag-scan.mjs). */
 const RUN_FILES = {
   'bug-hunter': 'diff, context (the ticket), scan, callers and packets. Packets are the ranked pieces of the change to review',
-  'code-sweeper': 'diff and scan (the scanner output: candidates, changed tests and coverage)',
+  'code-sweeper': 'diff and scan (the scanner output: candidates and coverage)',
+  'test-tailor': 'diff and scan (the scanner output: leads, the tests the diff touched with their assertion counts, and coverage)',
   'security-auditor': 'diff and scan (the scanner output: candidates and coverage)',
 };
 
@@ -65,11 +66,21 @@ const NATIVE_FORMAT = `Write JSON with a Bash heredoc to \`.swag-scan/run/findin
 /** How each agent hands in its findings, and how its tool's own labels map onto the three severities. */
 const SAVE_STEPS = {
   analyst: `Save the Bug Hunter findings file you already wrote (\`.swag-scan/run/findings.json\`) with \`node ${SAVE} --agent analyst --format bug-hunter --input .swag-scan/run/findings.json\`. Probable bugs become critical and suspicious items become design issues. You may add \`confidence\` (high, medium or low) to any finding. Every disposition is \`needs-decision\` because you are report-only.`,
-  inspector: `${NATIVE_FORMAT.replace('AGENT', 'inspector')} Map Code Sweeper's labels: Unclean and Dusty are normally \`minor\`; use \`design\` only for a real design problem (for example business logic repeated in several places). \`disposition\`: \`auto-fixed\` if you edited the file (add \`fixNote\` saying what changed), \`would-auto-fix\` if a safe fix exists but auto-fix was off for this run, and \`needs-decision\` for anything never auto-fixed (such as Dusty items).`,
+  inspector: `${NATIVE_FORMAT.replace('AGENT', 'inspector')} Map Test Tailor's labels too: 🔴 Excessive, 🟡 Loose and ticket-specific tests are normally \`minor\` (recommend removing, condensing or sharpening the test); use \`design\` when a test has stopped protecting behavior (a mocked module under test, an assertion loosened so the test cannot fail). Name Test Tailor findings with their \`TT-\` rule. Map Code Sweeper's labels: Unclean and Dusty are normally \`minor\`; use \`design\` only for a real design problem (for example business logic repeated in several places). \`disposition\`: \`auto-fixed\` if you edited the file (add \`fixNote\` saying what changed), \`would-auto-fix\` if a safe fix exists but auto-fix was off for this run, and \`needs-decision\` for anything never auto-fixed (such as Dusty items).`,
   'security-guard': `${NATIVE_FORMAT.replace('AGENT', 'security-guard')} Map Security Auditor's labels: High Risk is \`critical\`, Suspicious is \`design\`, and low-impact hardening is \`minor\`. Put the evidence and the impact together in \`evidence\`, and the remediation in \`recommendation\`. Every disposition is \`needs-decision\` because you are report-only.`,
 };
 
 const read = (path) => readFileSync(path, 'utf8').trim();
+
+/** Step 2 of the job: read each tool's SKILL.md and know where its saved results are. */
+function readTools(agent) {
+  const results = (tool) => `\`.swag-scan/run/${tool}-<name>.json\`: ${RUN_FILES[tool]}`;
+  if (agent.tools.length === 1) {
+    return `Read \`\${CLAUDE_PLUGIN_ROOT}/skills/${agent.tool}/SKILL.md\`. Follow its review steps (triage, deep review, classification and report format). Skip its script block: those scripts already ran, and \`TOOLS\` is \`\${CLAUDE_PLUGIN_ROOT}/skills\`. The results are in ${results(agent.tool)}.`;
+  }
+  const names = agent.tools.map((tool) => TOOL_TITLES[tool]).join(' and ');
+  return `You carry ${agent.tools.length} tools: ${names}. Read each tool's SKILL.md and follow its review steps (triage, deep review, classification and report format). Skip their script blocks: those scripts already ran, and \`TOOLS\` is \`\${CLAUDE_PLUGIN_ROOT}/skills\`. The first tool's results are in \`.swag-scan/run/summary.json\` and ${results(agent.tool)}; each later tool's are listed under \`alsoTools\` in your entry. Judge each tool's leads on their own, and keep their findings apart: the tool's own sections and labels apply to its findings.\n${agent.tools.map((tool) => `   - ${TOOL_TITLES[tool]}: \`\${CLAUDE_PLUGIN_ROOT}/skills/${tool}/SKILL.md\`, results in ${results(tool)}`).join('\n')}`;
+}
 
 function job(agent, spec) {
   const title = TOOL_TITLES[agent.tool];
@@ -81,7 +92,7 @@ function job(agent, spec) {
 The scripts have already run. The \`swag-scan\` command scanned this repository with no model and saved the results in \`.swag-scan/run/\`. You judge the leads it found. A lead is a script match, not a verified finding.
 
 1. Read \`.swag-scan/run/summary.json\`. Find your entry (\`id: "${agent.id}"\`): its \`leads\`, \`coverage\`, \`sizeGate\`, \`cache\` and file paths. If \`cache.hit\` is true, say that this commit was already reviewed, point to \`cache.reports\`, and stop. If \`status\` is \`empty\`, say there is nothing to check and stop.
-2. Read \`\${CLAUDE_PLUGIN_ROOT}/skills/${agent.tool}/SKILL.md\`. Follow its review steps (triage, deep review, classification and report format). Skip its script block: those scripts already ran, and \`TOOLS\` is \`\${CLAUDE_PLUGIN_ROOT}/skills\`. The results are in \`.swag-scan/run/${agent.tool}-<name>.json\`: ${RUN_FILES[agent.tool]}. Do not run the collector or the scanners again.${agent.id === 'analyst' ? `
+2. ${readTools(agent)} Do not run the collector or the scanners again.${agent.id === 'analyst' ? `
    The Bug Hunter report script takes your findings as JSON. You have no Write tool, so save them with a Bash heredoc to \`.swag-scan/run/findings.json\`, then run \`node \${CLAUDE_PLUGIN_ROOT}/skills/bug-hunter/scripts/write-report.mjs --config \${CLAUDE_PLUGIN_ROOT}/skills/bug-hunter/config.json --input .swag-scan/run/findings.json --scan .swag-scan/run/bug-hunter-scan.json --packets .swag-scan/run/bug-hunter-packets.json --out .swag-scan/run/bug-hunter-reports\`. The \`--out\` keeps its report inside \`.swag-scan/\`, so the repository under review gets no new folder.` : ''}
 3. The coverage line and the Unchecked files from your entry are added to the combined report for you. Never put an unchecked file under Clean, and never call the whole change clean when files are unchecked.
 4. If the size gate hit (\`sizeGate.decision\` is \`review-riskiest\`), say what was skipped. You never ask the user questions. If you cannot decide, report the item as suspicious and say what to verify.

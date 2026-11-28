@@ -1,0 +1,43 @@
+{
+	"diff": {
+		"baseRef": "auto",
+		"untrackedMaxBytes": 100000
+	},
+	"scan": {
+		"exclude": [
+			"package-lock.json",
+			"yarn.lock",
+			"pnpm-lock.yaml",
+			"*.md",
+			"*.txt",
+			"*.json",
+			"*.sqlite*",
+			"*.db",
+			"*.csv",
+			"*.tsv",
+			"*.xml",
+			"*.yaml",
+			"*.yml",
+			"*.toml",
+			"*.tsbuildinfo",
+			"*.d.ts",
+			"*.snap"
+		],
+		"testFiles": {
+			"patterns": [
+				"*.test.*",
+				"*.spec.*",
+				"test_*.py",
+				"*_test.py",
+				"**/__tests__/**",
+				"**/test/**",
+				"**/tests/**"
+			]
+		},
+		"thresholds": {
+			"maxSetupLines": 15,
+			"maxHookLines": 25,
+			"minDuplicateLiteralLines": 3
+		}
+	}
+}

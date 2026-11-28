@@ -45,8 +45,5 @@
 	},
 	"autoFix": {
 		"enabled": false
-	},
-	"tests": {
-		"removeLowValue": false
 	}
 }
