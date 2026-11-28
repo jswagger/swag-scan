@@ -48,10 +48,12 @@ function agentState(agent, report) {
 export function buildReport({ summary, findings, ticket }, { now = new Date() } = {}) {
   const agents = summary.agents.map((agent) => {
     const state = agentState(agent, findings[agent.id]);
-    const rules = rulesApplied(agent.tool, agent.coverage);
+    // An agent with several tools applied the rules of each one.
+    const counts = (agent.tools ?? [agent.tool]).map((tool) => rulesApplied(tool, agent.coverage)).filter((count) => count !== undefined);
+    const rules = counts.length ? counts.reduce((sum, count) => sum + count, 0) : undefined;
     // "N rules applied" goes on every result where files were read, so a short result is not mistaken for a thin check.
     return {
-      id: agent.id, name: agent.name, tool: agent.tool, leads: agent.leads ?? 0,
+      id: agent.id, name: agent.name, tool: agent.tool, tools: agent.tools ?? [agent.tool], leads: agent.leads ?? 0,
       ...state,
       ...(rules ? { rulesApplied: rules, text: `${state.text} ${plural(rules, 'rule')} applied.` } : {}),
     };

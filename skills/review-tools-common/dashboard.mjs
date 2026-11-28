@@ -21,7 +21,7 @@ const MARKER = '/*__SWAG_SCAN_DATA__*/null';
 export const CREW = ['analyst', 'inspector', 'security-guard'];
 export const STEP_TITLES = ['Read the diff', 'Scripts scan', 'Agents review', 'Findings saved', 'Report'];
 const NAMES = { analyst: 'Analyst', inspector: 'Inspector', 'security-guard': 'Security Guard', [RUN]: 'Swag Scan' };
-const TOOLS = { analyst: ['t-bug', 'Bug Hunter'], inspector: ['t-broom', 'Code Sweeper'], 'security-guard': ['t-lock', 'Security Auditor'] };
+const TOOLS = { analyst: ['t-bug', 'Bug Hunter'], inspector: ['t-broom', 'Code Sweeper + Test Tailor'], 'security-guard': ['t-lock', 'Security Auditor'] };
 const LABELS = {
   collect: 'reading the diff', 'size-gate': 'checking the size', ticket: 'reading the ticket', scan: 'scanning',
   callers: 'looking at callers', packets: 'bundling the leads',

@@ -12,6 +12,11 @@ test('the Code Sweeper catalog lists exactly the SWEEP rules its script can repo
   assert.deepEqual(listed('code-sweeper'), ids(read('../../code-sweeper/scripts/scan-patterns.mjs'), /ruleId: '(SWEEP-\d+)'/g));
 });
 
+test('the Test Tailor catalog lists exactly the TT rules its scripts can report', () => {
+  const found = ids(read('../../test-tailor/scripts/lib/test-blocks.mjs') + read('../../test-tailor/scripts/scan-patterns.mjs'), /'(TT-\d{3})'/g);
+  assert.deepEqual(listed('test-tailor'), found);
+});
+
 test('the Bug Hunter catalog lists exactly the rules its script can report', () => {
   const source = read('../../bug-hunter/scripts/lib/rules-regression.mjs');
   const found = ids(source, /(?:\brule: |removedFinding\(hunk, line, )'([A-Z_]+)'/g);
@@ -19,12 +24,14 @@ test('the Bug Hunter catalog lists exactly the rules its script can report', () 
 });
 
 test('rules are counted for the languages that were scanned', () => {
-  assert.equal(rulesApplied('code-sweeper', { checked: { 'C#': 3 } }), 9, 'C# skips the Python and JS/TS-only rules');
-  assert.equal(rulesApplied('code-sweeper', { checked: { Python: 1 } }), 10);
-  assert.equal(rulesApplied('code-sweeper', { checked: { TypeScript: 1 } }), 11);
-  assert.equal(rulesApplied('code-sweeper', { checked: { Python: 1, 'C#': 1, TypeScript: 1 } }), 12, 'a rule counts once, however many languages use it');
+  assert.equal(rulesApplied('code-sweeper', { checked: { 'C#': 3 } }), 6, 'C# skips the Python and JS/TS-only rules');
+  assert.equal(rulesApplied('code-sweeper', { checked: { Python: 1 } }), 7);
+  assert.equal(rulesApplied('code-sweeper', { checked: { TypeScript: 1 } }), 8);
+  assert.equal(rulesApplied('code-sweeper', { checked: { Python: 1, 'C#': 1, TypeScript: 1 } }), 9, 'a rule counts once, however many languages use it');
   assert.equal(rulesApplied('bug-hunter', { checked: { 'C#': 1 } }), 9);
   assert.equal(rulesApplied('bug-hunter', { checked: { JavaScript: 1 } }), 10);
+  assert.equal(rulesApplied('test-tailor', { checked: { Python: 1 } }), 9);
+  assert.equal(rulesApplied('test-tailor', { checked: { 'C#': 1 } }), 0, 'Test Tailor does not read C# tests yet');
 });
 
 test('Security Auditor counts the distinct rule ids it reported in ruleFamilies', () => {

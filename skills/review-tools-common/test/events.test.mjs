@@ -186,7 +186,8 @@ test('a scan writes its progress as steps, and the log holds no code', (context)
   assert.deepEqual(events.filter((e) => e.kind === 'started').map((e) => [e.agent, e.step, e.steps]), [['analyst', 1, 3], ['inspector', 2, 3], ['security-guard', 3, 3]]);
   const analyst = events.filter((e) => e.agent === 'analyst' && e.kind === 'progress');
   assert.deepEqual(analyst.map((e) => [e.step, e.steps, e.label]), [[1, 6, 'collect'], [2, 6, 'size-gate'], [3, 6, 'ticket'], [4, 6, 'scan'], [5, 6, 'callers'], [6, 6, 'packets']]);
-  assert.deepEqual(events.filter((e) => e.agent === 'inspector' && e.kind === 'progress').map((e) => e.label), ['collect', 'scan']);
+  // The Inspector carries two tools (Code Sweeper, then Test Tailor), so its steps count to four.
+  assert.deepEqual(events.filter((e) => e.agent === 'inspector' && e.kind === 'progress').map((e) => [e.step, e.steps, e.label]), [[1, 4, 'collect'], [2, 4, 'scan'], [3, 4, 'collect'], [4, 4, 'scan']]);
   const done = events.filter((e) => e.kind === 'done' && e.agent !== 'swag-scan');
   assert.deepEqual(done.map((e) => e.agent), ['analyst', 'inspector', 'security-guard']);
   assert(done.every((e) => Number.isInteger(e.count)));

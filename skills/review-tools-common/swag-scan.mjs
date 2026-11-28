@@ -19,7 +19,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSyn
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { BASE_CANDIDATES, listBranches, missingBranchMessage, noBaseWarning } from './branches.mjs';
-import { checkCache } from './cache.mjs';
+import { checkCache, toolFingerprint } from './cache.mjs';
 import { emit, readEvents } from './events.mjs';
 import { DASHBOARD_FILE, buildState, watchDashboard, writeDashboard } from './dashboard.mjs';
 import { writeReport } from './report.mjs';
@@ -30,15 +30,19 @@ const COMMON_DIR = dirname(fileURLToPath(import.meta.url));
 const SKILLS_DIR = dirname(COMMON_DIR);
 export const SUMMARY_SCHEMA = 1;
 
-/** The crew, in the fixed order they run. Each agent carries a tool belt of skills. */
+/** An agent carries a tool belt: `tools` in the order they run, and `tool` is the first one (the primary). */
+const agent = (id, name, ...tools) => ({ id, name, tool: tools[0], tools });
+
+/** The crew, in the fixed order they run. */
 export const AGENTS = [
-  { id: 'analyst', name: 'Analyst', tool: 'bug-hunter' },
-  { id: 'inspector', name: 'Inspector', tool: 'code-sweeper' },
-  { id: 'security-guard', name: 'Security Guard', tool: 'security-auditor' },
+  agent('analyst', 'Analyst', 'bug-hunter'),
+  agent('inspector', 'Inspector', 'code-sweeper', 'test-tailor'),
+  agent('security-guard', 'Security Guard', 'security-auditor'),
 ];
 
 const SUPPORTED_LANGUAGES = 'TypeScript, JavaScript, Python, C#';
-const TOOL_TITLES = { 'bug-hunter': 'Bug Hunter', 'code-sweeper': 'Code Sweeper', 'security-auditor': 'Security Auditor' };
+const TOOL_TITLES = { 'bug-hunter': 'Bug Hunter', 'code-sweeper': 'Code Sweeper', 'test-tailor': 'Test Tailor', 'security-auditor': 'Security Auditor' };
+export const toolTitles = (agent) => (agent.tools ?? [agent.tool]).map((tool) => TOOL_TITLES[tool]).join(' + ');
 
 /** An expected failure: its message is shown to the user as is, never with a stack trace. */
 export class PlainError extends Error {}
@@ -227,8 +231,15 @@ function cachedFindingCount(reports) {
   }
 }
 
+const stepsFor = (tool) => (tool === 'bug-hunter' ? 6 : 2);
+
+/** The part of the cache key that comes from the agent's other tools, so a change to one of them is never served from the cache. */
+function beltKey(alsoTools) {
+  return alsoTools.map((tool) => [tool, toolFingerprint(join(SKILLS_DIR, tool)), readFileSync(join(SKILLS_DIR, tool, 'config.json'), 'utf8')]);
+}
+
 /** Runs one tool's script pipeline for a repo. Returns what the summary needs; writes each step's JSON to `runDir`. */
-function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir, fresh, maxFileLines, autoFix }) {
+function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir, fresh, maxFileLines, autoFix, alsoTools = [], secondary = false, stepBase = 0, stepTotal }) {
   const skill = join(SKILLS_DIR, tool);
   const config = join(skill, 'config.json');
   const scripts = join(skill, 'scripts');
@@ -237,8 +248,8 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
   const read = (name) => JSON.parse(readFileSync(file(name), 'utf8'));
   const result = { tool, files: {} };
   // One event per finished script, as "step n of m": real counts, never a percentage.
-  const totalSteps = tool === 'bug-hunter' ? 6 : 2;
-  let stepNumber = 0;
+  const totalSteps = stepTotal ?? stepsFor(tool);
+  let stepNumber = stepBase;
   const progress = (label) => emit(runDir, { kind: 'progress', agent: agentId, phase: 'scan', step: (stepNumber += 1), steps: totalSteps, label });
 
   const diffText = node(join(COMMON_DIR, 'collect-diff.mjs'), ['--config', config, ...(base ? [base] : [])], { cwd: repo });
@@ -306,7 +317,7 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
     const packets = read('packets');
     if (packets.omitted?.length) result.omittedPackets = packets.omitted.length;
   } else {
-    // Code Sweeper and Security Auditor read the collector JSON on stdin. Code Sweeper never edits here (--no-fix).
+    // Code Sweeper, Test Tailor and Security Auditor read the collector JSON on stdin. Code Sweeper never edits here (--no-fix).
     const args = tool === 'code-sweeper' ? ['--no-fix', ...(maxFileLines ? ['--max-file-lines', String(maxFileLines)] : [])] : [];
     result.files.scan = save('scan', node(join(scripts, 'scan-patterns.mjs'), args, { cwd: repo, input: diffText }));
     progress('scan');
@@ -315,13 +326,28 @@ function runTool({ tool, agentId, repo, base, ticket, ticketDir, branch, runDir,
     result.coverage = scan.coverage ?? result.coverage;
   }
 
+  if (secondary) return { ...result, status: 'done' }; // the agent's first tool decides the cache for all of them
   try {
-    const cache = checkCache({ tool, configPath: config, diffPath: result.files.diff, contextPath, repo, fresh, extraKey: tool === 'code-sweeper' ? JSON.stringify({ maxFileLines, autoFix }) : '' });
+    const extra = { ...(tool === 'code-sweeper' ? { maxFileLines, autoFix } : {}), ...(alsoTools.length ? { belt: beltKey(alsoTools) } : {}) };
+    const cache = checkCache({ tool, configPath: config, diffPath: result.files.diff, contextPath, repo, fresh, extraKey: Object.keys(extra).length ? JSON.stringify(extra) : '' });
     result.cache = { hit: cache.hit, cacheable: cache.cacheable, key: cache.key, reason: cache.reason, ...(cache.hit ? { reports: cache.entry.reports, summary: cache.entry.summary, findings: cachedFindingCount(cache.entry.reports) } : {}) };
   } catch (error) {
     result.cache = { hit: false, cacheable: false, key: null, reason: `Cache unavailable: ${error.message}` };
   }
   return { ...result, status: 'done' };
+}
+
+/**
+ * Adds a later tool of the same agent to its first tool's result. Leads are summed; the first tool keeps the flat fields
+ * (files, coverage, cache) that the report and the cache read, and each later tool's own files and counts go under
+ * `alsoTools` so the agent can find them.
+ */
+function withSecondaryTool(first, next) {
+  return {
+    ...first,
+    leads: (first.leads ?? 0) + (next.leads ?? 0),
+    alsoTools: [...(first.alsoTools ?? []), { tool: next.tool, leads: next.leads ?? 0, files: next.files, coverage: next.coverage }],
+  };
 }
 
 export function renderSummary(summary) {
@@ -333,7 +359,7 @@ export function renderSummary(summary) {
     lines.push(`None of your changed files are in a language Swag Scan reviews (${SUPPORTED_LANGUAGES}), so ${summary.totalLeads ? 'only the checks on build files, workflows and secrets can find anything' : 'no reviewer will run'}.`);
   }
   for (const agent of summary.agents) {
-    const title = `${agent.name} (${TOOL_TITLES[agent.tool]})`;
+    const title = `${agent.name} (${toolTitles(agent)})`;
     if (agent.status === 'empty') lines.push(`${title}: no changes to check. ${agent.suggestion ?? ''}`.trim());
     else {
       const extras = [
@@ -400,17 +426,28 @@ export function runScan({ repo = process.cwd(), base, ticket, ticketDir, agents,
   for (const [index, agent] of crew.entries()) {
     const toolStart = now();
     emit(runDir, { kind: 'started', agent: agent.id, phase: 'scan', step: index + 1, steps: crew.length });
+    const stepTotal = agent.tools.reduce((sum, tool) => sum + stepsFor(tool), 0);
     let result;
     try {
-      result = runTool({ tool: agent.tool, agentId: agent.id, repo: root, base, ticket, ticketDir, branch, runDir, fresh, maxFileLines: settings?.maxFileLines, autoFix: settings?.autoFix });
+      let stepBase = 0;
+      for (const [position, tool] of agent.tools.entries()) {
+        const ran = runTool({
+          tool, agentId: agent.id, repo: root, base, ticket, ticketDir, branch, runDir, fresh, maxFileLines: settings?.maxFileLines, autoFix: settings?.autoFix,
+          alsoTools: position === 0 ? agent.tools.slice(1) : [], secondary: position > 0, stepBase, stepTotal,
+        });
+        stepBase += stepsFor(tool);
+        if (position === 0) result = ran;
+        else result = withSecondaryTool(result, ran);
+        if (result.status === 'empty') break; // nothing changed, so there is nothing for the other tools to read
+      }
     } catch (error) {
       emit(runDir, { kind: 'error', agent: agent.id, phase: 'scan', label: error instanceof PlainError ? error.message : 'scan failed' });
       throw error;
     }
-    const entry = { ...agent, ...result, durationMs: now() - toolStart };
+    const entry = { ...agent, ...result, tools: agent.tools, durationMs: now() - toolStart };
     results.push(entry);
     emit(runDir, { kind: 'done', agent: agent.id, phase: 'scan', count: entry.leads, label: entry.status === 'empty' ? 'no changes' : undefined });
-    log(`[${index + 1}/${crew.length}] ${agent.name} · ${TOOL_TITLES[agent.tool]}: ${entry.status === 'empty' ? 'no changes' : plural(entry.leads, 'lead')} (${seconds(entry.durationMs)})`);
+    log(`[${index + 1}/${crew.length}] ${agent.name} · ${toolTitles(agent)}: ${entry.status === 'empty' ? 'no changes' : plural(entry.leads, 'lead')} (${seconds(entry.durationMs)})`);
   }
 
   const first = results.find((entry) => entry.baseRef);

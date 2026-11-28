@@ -101,7 +101,7 @@ test('each agent is described honestly: reviewed, no leads, already reviewed, no
   assert.deepEqual(report.agents.map((entry) => entry.state), ['missing', 'no-leads', 'cached']);
   const markdown = renderMarkdown(report);
   assert.match(markdown, /\| Analyst \| ⚠ Did not report: 4 leads found, but no findings were saved\./);
-  assert.match(markdown, /\| Inspector \| No leads, so no model review\. This is not a check that the code is sound\. 11 rules applied\. \|/);
+  assert.match(markdown, /\| Inspector \| No leads, so no model review\. This is not a check that the code is sound\. 8 rules applied\. \|/);
   assert.match(markdown, /\| Security Guard \| Already reviewed at this commit\. Earlier report: \/r\/report\.md\./);
   assert.match(markdown, /Analyst did not report/);
 
@@ -213,7 +213,7 @@ test('who looked at what says how many rules each agent applied to the languages
   }, { now: NOW });
   const markdown = renderMarkdown(report);
   assert.match(markdown, /\| Analyst \|[^\n]*9 rules applied\. \|/);
-  assert.match(markdown, /\| Inspector \|[^\n]*No leads[^\n]*9 rules applied\. \|/);
+  assert.match(markdown, /\| Inspector \|[^\n]*No leads[^\n]*6 rules applied\. \|/);
   assert.match(markdown, /\| Security Guard \|[^\n]*3 rules applied\. \|/);
   assert.equal(report.agents[0].rulesApplied, 9);
 });

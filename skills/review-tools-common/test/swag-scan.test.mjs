@@ -330,3 +330,35 @@ test('the report has no acceptance-criteria section and findings carry no criter
   assert.match(reviewerText, /Parameterized queries/, 'the criteria text still reaches the reviewers as context');
   assert.doesNotMatch(reviewerText, /Done/);
 });
+
+test('the Inspector carries Code Sweeper and Test Tailor: both scan, their leads add up, and the summary names both', (context) => {
+  const repo = fixture(context, { extra: { 'app.test.js': "it('runs', () => {\n  getUser(db, 1);\n});\n" } });
+  const inspector = AGENTS.find((agent) => agent.id === 'inspector');
+  assert.deepEqual(inspector.tools, ['code-sweeper', 'test-tailor']);
+  assert.equal(inspector.tool, 'code-sweeper', 'the first tool stays the primary one');
+  assert.deepEqual(AGENTS.filter((agent) => agent.id !== 'inspector').map((agent) => agent.tools.length), [1, 1]);
+
+  const summary = runScan({ repo });
+  const entry = summary.agents.find((agent) => agent.id === 'inspector');
+  const tailor = entry.alsoTools.find((belt) => belt.tool === 'test-tailor');
+
+  assert.deepEqual(entry.alsoTools.map((belt) => belt.tool), ['test-tailor']);
+  assert(tailor.leads >= 1, 'a test without an assertion is a lead');
+  assert(existsSync(tailor.files.scan), 'the Test Tailor scan is saved for the Inspector to read');
+  assert.equal(entry.leads, JSON.parse(readFileSync(entry.files.scan, 'utf8')).candidates.length + tailor.leads, 'leads from both tools are summed');
+  assert.match(summary.text, /Inspector \(Code Sweeper \+ Test Tailor\)/);
+});
+
+test('a change to the Inspector\'s second tool is never served from the first tool\'s cache entry', (context) => {
+  const repo = fixture(context);
+  const first = runScan({ repo }).agents.find((agent) => agent.id === 'inspector').cache.key;
+  const again = runScan({ repo }).agents.find((agent) => agent.id === 'inspector').cache.key;
+  assert.equal(first, again, 'the same inputs give the same key');
+
+  const config = fileURLToPath(new URL('../../test-tailor/config.json', import.meta.url));
+  const original = readFileSync(config, 'utf8');
+  context.after(() => writeFileSync(config, original));
+  writeFileSync(config, original.replace('"maxSetupLines": 15', '"maxSetupLines": 9'));
+  const changed = runScan({ repo }).agents.find((agent) => agent.id === 'inspector').cache.key;
+  assert.notEqual(changed, first, 'Test Tailor\'s settings are part of the Inspector\'s cache key');
+});

@@ -42,7 +42,6 @@ try {
 }
 
 const candidates = [];
-const changedTests = [];
 const commentPattern = /^\s*(?:\/\/|\/\*+|\*|#)/;
 const addedLineCount = report.files.reduce((count, file) => count
   + (file.changes ?? []).filter((change) => change.side === 'added').length, 0);
@@ -185,134 +184,6 @@ function weakensTypeArgument(file, addedLine) {
   }));
 }
 
-function testBlocks(file) {
-  const lines = getSourceLines(file);
-  const addedLines = new Set((file.changes ?? [])
-    .filter((change) => change.side === 'added')
-    .map((change) => change.line));
-  const blocks = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!/\b(?:it|test)\s*\(/.test(lines[index])) continue;
-    let openLine = index;
-    while (openLine < lines.length && openLine <= index + 8 && !lines[openLine].includes('{')) openLine += 1;
-    if (openLine >= lines.length || openLine > index + 8) continue;
-    let depth = 0;
-    let endIndex = openLine;
-    for (; endIndex < lines.length; endIndex += 1) {
-      depth += braceDelta(lines[endIndex]);
-      if (depth <= 0 && endIndex >= openLine) break;
-    }
-    if (addedLines.has(index + 1) || [...addedLines].some((added) => added > index + 1 && added <= endIndex + 1)) {
-      blocks.push({ startLine: index + 1, endLine: endIndex + 1, text: lines.slice(openLine, endIndex + 1).join('\n') });
-    }
-  }
-  return blocks;
-}
-
-function normalizeTestBody(text) {
-  const callbackStart = text.indexOf('=>');
-  const body = callbackStart >= 0 ? text.slice(callbackStart + 2) : text;
-  const normalized = body.replace(/\/\/.*$/gm, '')
-    .replace(/\s+as\s+any\b/g, '')
-    .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, '#')
-    .replace(/\b\d+(?:\.\d+)?\b/g, '#');
-  const variables = new Map();
-  for (const match of normalized.matchAll(/\b(?:const|let|var)\s+([$\w]+)/g)) {
-    if (!variables.has(match[1])) variables.set(match[1], `$v${variables.size}`);
-  }
-  let result = normalized;
-  for (const [name, replacement] of variables) {
-    result = result.replace(new RegExp(`\\b${name.replace(/[$]/g, '\\$&')}\\b`, 'g'), replacement);
-  }
-  return result.replace(/\s+/g, ' ').trim();
-}
-
-function onlyTrivialAssertions(text) {
-  const expectations = [...text.matchAll(/\bexpect\s*\(/g)].length;
-  if (!expectations) return false;
-  const trivial = [...text.matchAll(/expect\s*\(\s*(?:typeof\s+[^)]+|[^)]+)\)\s*\.\s*(?:toBe\s*\(\s*['"]function['"]\s*\)|toBeDefined\s*\(\s*\))/g)].length;
-  return expectations === trivial;
-}
-
-function addTestCandidates(file) {
-  const blocks = testBlocks(file);
-  for (const block of blocks) {
-    if (onlyTrivialAssertions(block.text)) {
-      addCandidate({
-        ruleId: 'SWEEP-108',
-        severity: 'dusty',
-        path: file.path,
-        line: block.startLine,
-        description: 'Test only checks that a value exists or is a function; assert observable behavior instead',
-        evidence: block.text.trim().slice(0, 240),
-      });
-    }
-  }
-
-  const normalizedTests = new Map();
-  for (const block of blocks) {
-    const normalized = normalizeTestBody(block.text);
-    const matches = normalizedTests.get(normalized) ?? [];
-    matches.push(block);
-    normalizedTests.set(normalized, matches);
-  }
-  for (const matches of normalizedTests.values()) {
-    if (matches.length < 2) continue;
-    const tableDriven = matches.length >= 3;
-    addCandidate({
-      ruleId: 'SWEEP-110',
-      severity: 'dusty',
-      path: file.path,
-      line: matches[0].startLine,
-      occurrenceCount: matches.length,
-      description: tableDriven
-        ? `${matches.length} sibling tests have near-identical bodies; consider a table-driven test`
-        : 'Sibling tests repeat the same arrange/act/assert shape and assertions',
-      evidence: matches[0].text.trim().slice(0, 240),
-    });
-  }
-
-  const lines = getSourceLines(file);
-  const source = lines.join('\n');
-  const addedLines = new Set((file.changes ?? [])
-    .filter((change) => change.side === 'added')
-    .map((change) => change.line));
-  const fixtures = new Map();
-  const literalPattern = /\b(?:const|let|var)\s+[$\w]+\s*=\s*\{/g;
-  for (const match of source.matchAll(literalPattern)) {
-    const openBrace = source.indexOf('{', match.index);
-    let depth = 0;
-    let end = openBrace;
-    for (; end < source.length; end += 1) {
-      if (source[end] === '{') depth += 1;
-      if (source[end] === '}') depth -= 1;
-      if (depth === 0) break;
-    }
-    const literal = source.slice(openBrace, end + 1);
-    const suffix = source.slice(end + 1, source.indexOf('\n', end) < 0 ? source.length : source.indexOf('\n', end));
-    if (!/\bas\s+any\b/.test(literal + suffix)) continue;
-    const line = source.slice(0, match.index).split('\n').length;
-    const lastLine = source.slice(0, end + 1).split('\n').length;
-    if (![...addedLines].some((added) => added >= line && added <= lastLine)) continue;
-    const normalized = literal.replace(/\s+/g, ' ').trim();
-    const occurrences = fixtures.get(normalized) ?? [];
-    occurrences.push({ line, evidence: literal });
-    fixtures.set(normalized, occurrences);
-  }
-  for (const occurrences of fixtures.values()) {
-    if (occurrences.length < 2) continue;
-    addCandidate({
-      ruleId: 'SWEEP-109',
-      severity: 'dusty',
-      path: file.path,
-      line: occurrences[0].line,
-      occurrenceCount: occurrences.length,
-      description: `Same object-literal any fixture appears ${occurrences.length} times in this test file`,
-      evidence: occurrences[0].evidence.trim().slice(0, 240),
-    });
-  }
-}
-
 /** Big files that only grew a little were already big: flag new files, files that just crossed the limit, or real growth. */
 function fileGrewEnough(file, totalLines, growth, limit) {
   return file.status === 'added' || totalLines - growth <= limit || growth >= (thresholds.minFileGrowthLines ?? 50);
@@ -405,9 +276,6 @@ for (const file of report.files) {
   if (isExcluded(file.path)) continue;
   const testFile = isTestFile(file.path);
   const added = (file.changes ?? []).filter((change) => change.side === 'added');
-  if (testFile && added.length > 0) {
-    changedTests.push({ path: file.path, addedLines: added.length });
-  }
   addPythonFunctionCandidates(file);
 
   if (/\.(?:[cm]?[jt]sx?)$/i.test(file.path)) {
@@ -496,8 +364,6 @@ for (const file of report.files) {
     }
 
   }
-
-  if (testFile && added.length > 0) addTestCandidates(file);
 
   const addedCount = added.length;
   const removedCount = (file.changes ?? []).filter((change) => change.side === 'removed').length;
@@ -666,7 +532,6 @@ const coverageSummary = summarizeCoverage(report.files);
 
 process.stdout.write(`${JSON.stringify({
   candidates,
-  changedTests,
   coverage: { checked: coverageSummary.checked, unchecked: coverageSummary.unchecked, line: renderCoverageLine(coverageSummary) },
   skipped: report.skipped ?? [],
   baseRef: report.baseRef,
